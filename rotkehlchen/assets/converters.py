@@ -454,6 +454,17 @@ def asset_from_htx(htx_name: str) -> AssetWithOracles:
     ))
 
 
+def asset_from_deribit(symbol: str) -> AssetWithOracles:
+    """Resolve Deribit currency symbols, honoring user-defined exchange mappings."""
+    if not isinstance(symbol, str):
+        raise DeserializationError(f'Got non-string type {type(symbol)} for Deribit asset')
+    return symbol_to_asset_or_token(GlobalDBHandler.get_assetid_from_exchange_name(
+        exchange=Location.DERIBIT,
+        symbol=symbol,
+        default=symbol,
+    ))
+
+
 def asset_from_coinex(coinex_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
@@ -543,6 +554,7 @@ LOCATION_TO_ASSET_MAPPING: dict[Location, Callable[[str], AssetWithOracles]] = {
     Location.WOO: asset_from_woo,
     Location.HTX: asset_from_htx,
     Location.COINEX: asset_from_coinex,
+    Location.DERIBIT: asset_from_deribit,
     Location.BITCOINDE: asset_from_bitcoinde,
     Location.GATE: asset_from_gate,
     Location.EXTERNAL: asset_from_common_identifier,

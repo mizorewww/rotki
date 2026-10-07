@@ -1080,7 +1080,7 @@ def test_edit_exchange_credentials(rotkehlchen_api_server_with_exchanges: APISer
             assert exchange.api_key == new_key
             if location not in EXCHANGES_WITHOUT_API_SECRET:
                 assert exchange.secret == new_secret.encode()
-            if location in (Location.ICONOMI, Location.HTX, Location.CRYPTOCOM, Location.COINBASE):
+            if location in (Location.ICONOMI, Location.HTX, Location.CRYPTOCOM, Location.COINBASE, Location.DERIBIT):  # noqa: E501
                 continue  # except for these specific exchanges
             # all of the api keys end up in session headers. Check they are properly
             # updated there
@@ -1115,7 +1115,7 @@ def test_edit_exchange_credentials(rotkehlchen_api_server_with_exchanges: APISer
             assert exchange.api_key == new_key
             if location not in EXCHANGES_WITHOUT_API_SECRET:
                 assert exchange.secret == new_secret.encode()
-            if location in (Location.ICONOMI, Location.HTX, Location.CRYPTOCOM, Location.COINBASE):
+            if location in (Location.ICONOMI, Location.HTX, Location.CRYPTOCOM, Location.COINBASE, Location.DERIBIT):  # noqa: E501
                 continue  # except for these specific exchanges
             # all of the api keys end up in session headers. Check they are properly
             # updated there

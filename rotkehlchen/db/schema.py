@@ -130,6 +130,8 @@ INSERT OR IGNORE INTO location(location, seq) VALUES ('\x80', 64);
 INSERT OR IGNORE INTO location(location, seq) VALUES ('\x81', 65);
 /* FinTS */
 INSERT OR IGNORE INTO location(location, seq) VALUES ('\x82', 66);
+/* Deribit */
+INSERT OR IGNORE INTO location(location, seq) VALUES ('\x83', 67);
 /* Gate */
 INSERT OR IGNORE INTO location(location, seq) VALUES ('{', 59);
 /* Bit2me */

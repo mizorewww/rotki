@@ -54,6 +54,11 @@ const customLabel: Record<string, LocationConfig> = {
       label: t('exchange_settings.inputs.passphrase'),
     },
   },
+  deribit: {
+    apiKey: {
+      hint: t('exchange_settings.inputs.deribit_balance_hint'),
+    },
+  },
 };
 
 const defaultData: Record<LocationKey, SlotProps> = {

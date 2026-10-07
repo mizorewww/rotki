@@ -4950,6 +4950,9 @@ def test_upgrade_db_53_to_54(
         resume_from_backup=False,
     )
     with db_v53.conn.write_ctx() as write_cursor:
+        assert write_cursor.execute(
+            'SELECT COUNT(*) FROM location WHERE seq = 67',
+        ).fetchone()[0] == 0
         assert not column_exists(write_cursor, 'rpc_nodes', 'is_archive')
         assert not column_exists(write_cursor, 'rpc_nodes', 'is_pruned')
         # make sure the Sonic and Robinhood locations are not in the old DB
@@ -5057,5 +5060,8 @@ def test_upgrade_db_53_to_54(
             'SELECT COUNT(*) FROM rpc_nodes WHERE is_archive IS NOT NULL OR is_pruned IS NOT NULL',
         ).fetchone()[0] == 0
         assert db.get_setting(cursor, 'version') == 54
+        assert cursor.execute(
+            'SELECT location FROM location WHERE seq = 67',
+        ).fetchone()[0] == Location.DERIBIT.serialize_for_db()
 
     db.logout()

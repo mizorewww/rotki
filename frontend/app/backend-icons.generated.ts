@@ -17,6 +17,7 @@ export const backendIcons: string[] = [
   'lu-box',
   'lu-briefcase',
   'lu-building-2',
+  'lu-chart-candlestick',
   'lu-check',
   'lu-circle-arrow-out-up-right',
   'lu-circle-question-mark',

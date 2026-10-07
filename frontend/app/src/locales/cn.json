@@ -3239,6 +3239,7 @@
       "api_secret": "API Secret",
       "api_secret_or_private_key": "API Secret / 私钥",
       "binance_secret_hint": "粘贴 HMAC 密钥或完整的未加密 RSA / Ed25519 PEM 私钥，系统会自动识别密钥类型。",
+      "deribit_balance_hint": "使用具有 account:read 权限的 Client ID 和 Client Secret。余额包含期权价值，暂不支持导入交易历史。",
       "experimental": "该交易所的集成处于实验阶段，可能存在一些不完善之处。如遇到问题请告知我们。",
       "futures_api_key": "合约 API Key",
       "futures_api_secret": "合约 API Secret",
