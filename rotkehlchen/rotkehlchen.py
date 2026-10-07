@@ -14,7 +14,7 @@ from rotkehlchen.accounting.accountant import Accountant
 from rotkehlchen.accounting.structures.balance import Balance, BalanceType
 from rotkehlchen.api.websockets.notifier import RotkiNotifier
 from rotkehlchen.api.websockets.typedefs import WSMessageType
-from rotkehlchen.assets.asset import Asset, AssetWithOracles, Nft
+from rotkehlchen.assets.asset import Asset, AssetWithNameAndType, AssetWithOracles, Nft
 from rotkehlchen.balances.manual import (
     account_for_manually_tracked_asset_balances,
     get_manually_tracked_balances,
@@ -1295,7 +1295,9 @@ class Rotkehlchen:
         )
         wait([task for _, task in exchange_tasks] + [blockchain_task])
 
-        exchange_balances: dict[AssetWithOracles, Balance] | None
+        exchange_balances: (
+            dict[AssetWithOracles, Balance] | dict[AssetWithNameAndType, Balance] | None
+        )
         for exchange, task in exchange_tasks:
             # result_of reraises whatever the query died with, as the serial call used to
             exchange_balances, error_msg = result_of(task)

@@ -13,6 +13,7 @@ import requests
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.api.websockets.typedefs import HistoryEventsStep
 from rotkehlchen.assets.converters import asset_from_gate
+from rotkehlchen.assets.unrealized_pnl import get_gate_pnl_asset
 from rotkehlchen.concurrency import result_of, spawn, wait
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.constants.timing import DAY_IN_SECONDS
@@ -66,7 +67,7 @@ from rotkehlchen.utils.mixins.lockable import protect_with_lock
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from rotkehlchen.assets.asset import AssetWithOracles
+    from rotkehlchen.assets.asset import AssetWithNameAndType
     from rotkehlchen.db.dbhandler import DBHandler
     from rotkehlchen.exchanges.data_structures import MarginPosition
     from rotkehlchen.history.events.structures.base import HistoryBaseEntry
@@ -86,6 +87,12 @@ class GateLocation(SerializableEnumNameMixin):
     GLOBAL = GATE_BASE_URL
     EUROPE = 'https://api.gateeu.com/api/v4'
     US = 'https://api.gate.us/api/v4'
+
+
+class GateAPIError(RemoteError):
+    def __init__(self, label: str, message: str) -> None:
+        self.label = label
+        super().__init__(f'Gate returned error: {message} ({label})')
 
 
 class Gate(ExchangeInterface, ExchangeWithExtras, SignatureGeneratorMixin):
@@ -193,6 +200,12 @@ class Gate(ExchangeInterface, ExchangeWithExtras, SignatureGeneratorMixin):
             )
 
         if response.status_code != HTTPStatus.OK:
+            try:
+                error = json.loads(response.text)
+            except json.JSONDecodeError:
+                error = {}
+            if isinstance(error, dict) and isinstance(error.get('label'), str):
+                raise GateAPIError(error['label'], error.get('message', 'Request failed'))
             raise RemoteError(
                 f'Gate api request for {response.url} failed with HTTP status '
                 f'code {response.status_code} and response {response.text}',
@@ -204,9 +217,7 @@ class Gate(ExchangeInterface, ExchangeWithExtras, SignatureGeneratorMixin):
             raise RemoteError('Gate returned invalid JSON response') from e
 
         if isinstance(json_ret, dict) and 'label' in json_ret:
-            raise RemoteError(
-                f'Gate returned error: {json_ret.get("message")} ({json_ret.get("label")})',
-            )
+            raise GateAPIError(json_ret['label'], json_ret.get('message', 'Request failed'))
 
         return json_ret
 
@@ -232,7 +243,7 @@ class Gate(ExchangeInterface, ExchangeWithExtras, SignatureGeneratorMixin):
             log.error('Gate spot accounts response is not a list: %s', response)
             return None, 'Unexpected response format from Gate'
 
-        returned_balances: dict[AssetWithOracles, Balance] = {}
+        returned_balances: dict[AssetWithNameAndType, Balance] = {}
         for entry in response:
             try:
                 asset = asset_from_gate(entry['currency'])
@@ -271,7 +282,76 @@ class Gate(ExchangeInterface, ExchangeWithExtras, SignatureGeneratorMixin):
                 value=amount * price,
             )
 
+        if self.gate_location == GateLocation.GLOBAL:
+            try:
+                self._add_futures_balances(returned_balances)
+            except (RemoteError, DeserializationError, KeyError, TypeError) as e:
+                return None, f'Could not query Gate futures balances: {e!s}'
+
         return returned_balances, ''
+
+    def _add_futures_balances(self, balances: dict[AssetWithNameAndType, Balance]) -> None:
+        """Add wallet funds and a separate signed PnL asset for each settlement currency.
+
+        Unified wallets replace spot funds rather than being added to them. Use their cash
+        components, because equity already includes derivatives PnL. The futures `total`
+        field is only meaningful for a classic, separate futures wallet.
+        """
+        accounts = []
+        for currency in ('BTC', 'USDT'):
+            try:
+                account = self._api_query(path=f'/futures/{currency.lower()}/accounts')
+            except GateAPIError as e:
+                if e.label == 'USER_NOT_FOUND':
+                    continue
+                if e.label == 'FORBIDDEN':
+                    self.msg_aggregator.add_warning(
+                        f'Gate {currency} futures balances and unrealized PnL could not be read. '
+                        'Enable read permission for futures and check the API IP whitelist.',
+                    )
+                    continue
+                raise
+            if not isinstance(account, dict) or account.get('currency') != currency:
+                raise RemoteError(f'Invalid Gate {currency} futures account response')
+            accounts.append(account)
+
+        if any(account.get('margin_mode', 0) != 0 for account in accounts):
+            unified = self._api_query(path='/unified/accounts')
+            if not isinstance(unified, dict) or not isinstance(entries := unified.get('balances'), dict):  # noqa: E501
+                raise RemoteError('Invalid Gate unified account response')
+            balances.clear()
+            for currency, entry in entries.items():
+                amount = (
+                    deserialize_fval(entry['available']) +
+                    deserialize_fval(entry['freeze']) +
+                    deserialize_fval(entry.get('iso_balance', '0')) -
+                    deserialize_fval(entry['borrowed'])
+                )
+                if unified.get('use_funding', False):
+                    amount += deserialize_fval(entry.get('funding', '0'))
+                if amount == ZERO:
+                    continue
+                try:
+                    asset = asset_from_gate(currency)
+                except UnknownAsset:
+                    self.send_unknown_asset_message(currency, details='unified balance query')
+                    continue
+                balances[asset] = Balance(amount=amount, value=amount * Inquirer.find_main_currency_price(asset))  # noqa: E501
+
+        for account in accounts:
+            asset = asset_from_gate(currency := account['currency'])
+            amount = (
+                deserialize_fval(account['total'])
+                if account.get('margin_mode', 0) == 0 else ZERO
+            )
+            pnl = deserialize_fval(account['unrealised_pnl'])
+            if amount == ZERO and pnl == ZERO:
+                continue
+            price = Inquirer.find_main_currency_price(asset)
+            if amount != ZERO:
+                balances[asset] = balances.get(asset, Balance()) + Balance(amount=amount, value=amount * price)  # noqa: E501
+            if pnl != ZERO:
+                balances[get_gate_pnl_asset(currency)] = Balance(amount=pnl, value=pnl * price)
 
     def _query_trades(
             self,

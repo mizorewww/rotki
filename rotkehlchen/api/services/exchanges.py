@@ -11,7 +11,7 @@ from rotkehlchen.utils.misc import combine_dicts, ts_now
 
 if TYPE_CHECKING:
     from rotkehlchen.accounting.structures.balance import Balance
-    from rotkehlchen.assets.asset import AssetWithOracles
+    from rotkehlchen.assets.asset import AssetWithNameAndType
     from rotkehlchen.exchanges.gate import GateLocation
     from rotkehlchen.exchanges.kraken import KrakenAccountType
     from rotkehlchen.exchanges.okx import OkxLocation
@@ -199,7 +199,7 @@ class ExchangesService:
                 'status_code': HTTPStatus.CONFLICT,
             }
 
-        balances: dict[AssetWithOracles, Balance] = {}
+        balances: dict[AssetWithNameAndType, Balance] = {}
         for exchange in exchanges_list:
             result, msg = exchange.query_balances(ignore_cache=ignore_cache)
             if result is None:
@@ -208,12 +208,12 @@ class ExchangesService:
                     'message': msg,
                     'status_code': HTTPStatus.CONFLICT,
                 }
-            balances = combine_dicts(balances, result)
+            balances = combine_dicts(balances, dict(result.items()))
 
         if value_threshold is not None:
             balances = {
                 asset: balance for asset, balance in balances.items()
-                if balance.value > value_threshold
+                if abs(balance.value) > value_threshold
             }
 
         return {
@@ -227,7 +227,7 @@ class ExchangesService:
             ignore_cache: bool,
             value_threshold: FVal | None = None,
     ) -> dict[str, Any]:
-        final_balances: dict[str, dict[AssetWithOracles, Balance]] = {}
+        final_balances: dict[str, dict[AssetWithNameAndType, Balance]] = {}
         error_msg = ''
         for exchange_obj in self.rotkehlchen.exchange_manager.iterate_exchanges():
             balances, msg = exchange_obj.query_balances(ignore_cache=ignore_cache)
@@ -236,11 +236,11 @@ class ExchangesService:
             else:
                 location_str = str(exchange_obj.location)
                 if location_str not in final_balances:
-                    final_balances[location_str] = balances
+                    final_balances[location_str] = dict(balances.items())
                 else:
                     final_balances[location_str] = combine_dicts(
                         final_balances[location_str],
-                        balances,
+                        dict(balances.items()),
                     )
 
         if final_balances == {}:
@@ -255,9 +255,9 @@ class ExchangesService:
             for location_str, balances in final_balances.items():
                 filtered_balances[location_str] = {
                     asset: balance for asset, balance in balances.items()
-                    if balance.value > value_threshold
+                    if abs(balance.value) > value_threshold
                 }
-            result: dict[str, dict[AssetWithOracles, Balance]] = filtered_balances
+            result: dict[str, dict[AssetWithNameAndType, Balance]] = filtered_balances
         else:
             result = final_balances
 

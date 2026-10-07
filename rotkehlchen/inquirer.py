@@ -17,6 +17,7 @@ from eth_utils import function_signature_to_4byte_selector
 
 from rotkehlchen.assets.asset import Asset, AssetWithOracles, EvmToken, FiatAsset, UnderlyingToken
 from rotkehlchen.assets.resolver import AssetResolver
+from rotkehlchen.assets.unrealized_pnl import GATE_PNL_ASSETS
 from rotkehlchen.assets.utils import (
     TokenEncounterInfo,
     get_or_create_evm_token,
@@ -882,6 +883,8 @@ class Inquirer:
         """
         if asset == A_ETH2:
             return A_ETH
+        elif (underlying := GATE_PNL_ASSETS.get(asset.identifier)) is not None:
+            return Asset(underlying)
         elif (main_asset_id := AssetResolver.get_collection_main_asset(asset.identifier)) is not None:  # noqa: E501
             return Asset(main_asset_id)
 
@@ -910,6 +913,8 @@ class Inquirer:
 
             if from_asset == A_ETH2:
                 asset_to_price = A_ETH
+            elif (underlying := GATE_PNL_ASSETS.get(from_asset.identifier)) is not None:
+                asset_to_price = Asset(underlying)
             elif (main_asset_id := collection_main_assets.get(from_asset.identifier)) is not None:
                 asset_to_price = Asset(main_asset_id)
             else:
@@ -917,6 +922,9 @@ class Inquirer:
 
             if asset_to_price != from_asset:
                 replaced_assets[from_asset] = asset_to_price
+                if asset_to_price == to_asset:
+                    found_prices[asset_to_price] = Price(ONE), CurrentPriceOracle.MANUALCURRENT
+                    continue
                 if asset_to_price in found_prices or asset_to_price in seen_to_check:
                     continue
 

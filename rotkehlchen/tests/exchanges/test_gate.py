@@ -7,8 +7,10 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from rotkehlchen.accounting.structures.balance import Balance
+from rotkehlchen.api.services.exchanges import ExchangesService
 from rotkehlchen.api.websockets.typedefs import HistoryEventsStep
 from rotkehlchen.assets.converters import asset_from_gate
+from rotkehlchen.assets.unrealized_pnl import get_gate_pnl_asset
 from rotkehlchen.constants.assets import A_BTC, A_ETH, A_USDT
 from rotkehlchen.constants.timing import DAY_IN_SECONDS
 from rotkehlchen.db.constants import GATE_LOCATION_KEY
@@ -22,6 +24,7 @@ from rotkehlchen.exchanges.gate import (
     GATE_MOVEMENTS_PAGINATION_LIMIT,
     GATE_MOVEMENTS_QUERY_START_TS,
     Gate,
+    GateAPIError,
     GateLocation,
 )
 from rotkehlchen.fval import FVal
@@ -29,6 +32,7 @@ from rotkehlchen.history.events.structures.asset_movement import AssetMovement
 from rotkehlchen.history.events.structures.swap import SwapEvent
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.history.events.utils import create_group_identifier_from_unique_id
+from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.types import Location, Timestamp, TimestampMS
 from rotkehlchen.utils.misc import ts_now
 
@@ -308,6 +312,8 @@ def test_query_balances(gate_exchange: Gate):
 
     mock_fn = gate_account_mock(calls={
         '/spot/accounts': [(None, balance_response)],
+        '/futures/btc/accounts': [(None, {'currency': 'BTC', 'total': '0', 'unrealised_pnl': '0'})],  # noqa: E501
+        '/futures/usdt/accounts': [(None, {'currency': 'USDT', 'total': '0', 'unrealised_pnl': '0'})],  # noqa: E501
     })
     with patch.object(gate_exchange, '_api_query', side_effect=mock_fn):
         balances, _ = gate_exchange.query_balances()
@@ -316,6 +322,96 @@ def test_query_balances(gate_exchange: Gate):
         A_BTC: Balance(amount=FVal('2.0'), value=FVal('3.0')),
         A_ETH: Balance(amount=FVal('2.0'), value=FVal('3.0')),
         A_USDT: Balance(amount=FVal('150.0'), value=FVal('225.0')),
+    }
+
+
+@pytest.mark.parametrize('should_mock_current_price_queries', [True])
+def test_gate_separates_futures_wallet_and_signed_pnl(gate_exchange: Gate) -> None:
+    with patch.object(gate_exchange, '_api_query', side_effect=gate_account_mock({
+        '/spot/accounts': [(None, [{'currency': 'USDT', 'available': '50', 'locked': '10'}])],
+        '/futures/btc/accounts': [(None, {'currency': 'BTC', 'total': '2', 'unrealised_pnl': '-0.25'})],  # noqa: E501
+        '/futures/usdt/accounts': [(None, {'currency': 'USDT', 'total': '100', 'unrealised_pnl': '20'})],  # noqa: E501
+    })):
+        balances, error = gate_exchange.query_balances()
+    assert error == ''
+    assert balances == {
+        A_USDT: Balance(amount=FVal(160), value=FVal(240)),
+        A_BTC: Balance(amount=FVal(2), value=FVal(3)),
+        get_gate_pnl_asset('BTC'): Balance(amount=FVal('-0.25'), value=FVal('-0.375')),
+        get_gate_pnl_asset('USDT'): Balance(amount=FVal(20), value=FVal(30)),
+    }
+    assert get_gate_pnl_asset('BTC').resolve().custom_asset_type == '浮盈'
+
+
+@pytest.mark.parametrize('should_mock_current_price_queries', [True])
+@pytest.mark.parametrize('margin_mode', [1, 2, 3])
+def test_gate_unified_cash_is_not_added_to_spot_again(
+        gate_exchange: Gate,
+        margin_mode: int,
+) -> None:
+    with patch.object(gate_exchange, '_api_query', side_effect=gate_account_mock({
+        '/spot/accounts': [(None, [{'currency': 'USDT', 'available': '50', 'locked': '10'}])],
+        '/futures/btc/accounts': [(None, {'currency': 'BTC', 'total': '2', 'unrealised_pnl': '0'})],  # noqa: E501
+        '/futures/usdt/accounts': [(None, {'currency': 'USDT', 'margin_mode': margin_mode, 'total': '9999', 'unrealised_pnl': '-20'})],  # noqa: E501
+        '/unified/accounts': [(None, {'balances': {'USDT': {
+            'equity': '80', 'available': '80', 'freeze': '25',
+            'borrowed': '5', 'iso_balance': '10',
+        }}})],
+    })):
+        balances, error = gate_exchange.query_balances()
+    assert error == ''
+    assert balances == {
+        A_USDT: Balance(amount=FVal(110), value=FVal(165)),
+        A_BTC: Balance(amount=FVal(2), value=FVal(3)),
+        get_gate_pnl_asset('USDT'): Balance(amount=FVal(-20), value=FVal(-30)),
+    }
+
+
+@pytest.mark.parametrize('label', ['USER_NOT_FOUND', 'FORBIDDEN'])
+def test_gate_spot_only_keys(gate_exchange: Gate, label: str) -> None:
+    with patch.object(gate_exchange, '_api_query', side_effect=[
+        [], GateAPIError(label, 'Unavailable'), GateAPIError(label, 'Unavailable'),
+    ]):
+        assert gate_exchange.query_balances() == ({}, '')
+    warnings = gate_exchange.msg_aggregator.consume_warnings()
+    assert len(warnings) == (2 if label == 'FORBIDDEN' else 0)
+
+
+@pytest.mark.parametrize('response', [[], {}, {'currency': 'BTC', 'total': '1', 'unrealised_pnl': 'bad'}])  # noqa: E501
+def test_gate_invalid_futures_response_fails_balance_query(gate_exchange: Gate, response) -> None:
+    with patch.object(gate_exchange, '_api_query', side_effect=[
+        [], response, {'currency': 'USDT', 'total': '0', 'unrealised_pnl': '0'},
+    ]):
+        balances, error = gate_exchange.query_balances()
+    assert balances is None
+    assert error
+
+
+@pytest.mark.parametrize('should_mock_current_price_queries', [False])
+@pytest.mark.parametrize(('currency', 'underlying'), [('BTC', A_BTC), ('USDT', A_USDT)])
+def test_gate_pnl_price_tracks_settlement_asset(inquirer, currency, underlying) -> None:
+    asset = get_gate_pnl_asset(currency)
+    with patch.object(Inquirer, '_query_oracle_instances', return_value={}) as oracle:
+        assert Inquirer.find_price(asset, underlying, ignore_cache=True) == FVal(1)
+    oracle.assert_not_called()
+
+
+@pytest.mark.parametrize('location', [Location.GATE, None])
+def test_gate_losses_survive_exchange_value_threshold(gate_exchange: Gate, location) -> None:
+    pnl_asset = get_gate_pnl_asset('USDT')
+    exchange_manager = Mock(connected_exchanges={Location.GATE: [gate_exchange]})
+    exchange_manager.iterate_exchanges.return_value = [gate_exchange]
+    service = ExchangesService(Mock(exchange_manager=exchange_manager))
+    with patch.object(gate_exchange, 'query_balances', return_value=({
+        pnl_asset: Balance(amount=FVal(-20), value=FVal(-20)),
+        A_USDT: Balance(amount=FVal(100), value=FVal(100)),
+        A_ETH: Balance(amount=FVal('0.001'), value=FVal('0.5')),
+    }, '')):
+        response = service.query_exchange_balances(location, ignore_cache=True, value_threshold=FVal(1))  # noqa: E501
+    balances = response['result'] if location is not None else response['result']['gate']
+    assert balances == {
+        pnl_asset: Balance(amount=FVal(-20), value=FVal(-20)),
+        A_USDT: Balance(amount=FVal(100), value=FVal(100)),
     }
 
 

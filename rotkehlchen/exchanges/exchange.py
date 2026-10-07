@@ -15,7 +15,7 @@ from rotkehlchen.api.websockets.typedefs import (
     HistoryEventsStep,
     WSMessageType,
 )
-from rotkehlchen.assets.asset import AssetWithOracles
+from rotkehlchen.assets.asset import AssetWithNameAndType, AssetWithOracles
 from rotkehlchen.constants.prices import ZERO_PRICE
 from rotkehlchen.db.history_events import DBHistoryEvents
 from rotkehlchen.db.ranges import DBQueryRanges
@@ -49,7 +49,10 @@ logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
 
 
-ExchangeQueryBalances = tuple[dict[AssetWithOracles, Balance] | None, str]
+ExchangeQueryBalances = tuple[
+    dict[AssetWithOracles, Balance] | dict[AssetWithNameAndType, Balance] | None,
+    str,
+]
 
 ExchangeHistoryFailCallback = Callable[[str], None]
 ExchangeHistoryNewStepCallback = Callable[[str], None]
