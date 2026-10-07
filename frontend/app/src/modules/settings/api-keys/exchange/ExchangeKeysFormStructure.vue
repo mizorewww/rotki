@@ -23,7 +23,16 @@ type LocationConfig = Partial<Record<LocationKey, SlotProps>>;
 
 const { t } = useI18n({ useScope: 'global' });
 
+const binanceConfig: LocationConfig = {
+  apiSecret: {
+    hint: t('exchange_settings.inputs.binance_secret_hint'),
+    label: t('exchange_settings.inputs.api_secret_or_private_key'),
+  },
+};
+
 const customLabel: Record<string, LocationConfig> = {
+  binance: binanceConfig,
+  binanceus: binanceConfig,
   coinbase: {
     apiKey: {
       label: t('exchange_settings.inputs.api_key_name'),
@@ -59,19 +68,18 @@ const defaultData: Record<LocationKey, SlotProps> = {
   },
 };
 
-const slotData = computed(() => {
+const slotData = computed<{ bindings: SlotProps; name: LocationKey }[]>(() => {
   const locationConfig = customLabel[location] || {};
 
   return LOCATION_KEYS
+    .filter(name => slots[name])
     .map(name => ({
       bindings: {
         ...defaultData[name],
         ...locationConfig[name],
       },
       name,
-      slot: slots[name],
-    }))
-    .filter(item => item.slot);
+    }));
 });
 </script>
 

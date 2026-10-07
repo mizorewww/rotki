@@ -26,6 +26,7 @@ from rotkehlchen.db.settings import CachedSettings
 from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.misc import InputError, RemoteError
 from rotkehlchen.errors.serialization import DeserializationError
+from rotkehlchen.exchanges.binance_signing import sign_binance_payload
 from rotkehlchen.exchanges.exchange import (
     ExchangeInterface,
     ExchangeQueryBalances,
@@ -359,7 +360,7 @@ class Binance(ExchangeInterface, ExchangeWithExtras, SignatureGeneratorMixin):
                 # Recommended recvWindows is 5000 but we get timeouts with it
                 call_options['recvWindow'] = 10000
                 call_options['timestamp'] = str(ts_now_in_ms() + self.offset_ms)
-                signature = self.generate_hmac_signature(urlencode(call_options))
+                signature = sign_binance_payload(self.secret, urlencode(call_options))
                 call_options['signature'] = signature
 
             api_subdomain = api_type if is_new_futures_api else 'api'

@@ -3252,6 +3252,8 @@
       "api_key": "API Key",
       "api_key_name": "API Key Name",
       "api_secret": "API Secret",
+      "api_secret_or_private_key": "API Secret / Private Key",
+      "binance_secret_hint": "Paste your HMAC secret or your complete unencrypted RSA / Ed25519 PEM private key. The key type is detected automatically.",
       "experimental": "The integration for this exchange is experimental, and you may find some imperfections. Please let us know if you encounter any issues.",
       "futures_api_key": "Futures API Key",
       "futures_api_secret": "Futures API Secret",
