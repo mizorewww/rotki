@@ -1,6 +1,11 @@
 import type { ComputedRef, MaybeRefOrGetter, Ref } from 'vue';
-import type { AssetUpdateConflictResult, AssetVersionUpdate, ConflictResolution } from '@/modules/assets/types';
 import { isErr } from 'plainfp/result';
+import {
+  ApplyUpdateKind,
+  type AssetUpdateConflictResult,
+  type AssetVersionUpdate,
+  type ConflictResolution,
+} from '@/modules/assets/types';
 import { useAssets } from '@/modules/assets/use-assets';
 import { useRestartingStatus } from '@/modules/auth/use-restarting-status';
 import { useConfirmStore } from '@/modules/core/common/use-confirm-store';
@@ -192,17 +197,21 @@ export function useAssetUpdate(options: UseAssetUpdateOptions): UseAssetUpdateRe
     set(modelShowConflictDialog, false);
     const version = get(modelChanges).upToVersion;
     set(applying, true);
-    const updateResult = await applyUpdates({ resolution, version });
+    const outcome = await applyUpdates({ resolution, version });
     set(applying, false);
 
-    if (updateResult.done) {
-      set(skipped, 0);
-      showDoneConfirmation();
-    }
-    else if (updateResult.conflicts) {
+    if (isErr(outcome))
+      return;
+
+    const updateResult = outcome.value;
+    if (updateResult.kind === ApplyUpdateKind.CONFLICTS) {
       set(conflicts, updateResult.conflicts);
       set(modelShowConflictDialog, true);
+      return;
     }
+
+    set(skipped, 0);
+    showDoneConfirmation();
   }
 
   onMounted(async () => {

@@ -204,6 +204,7 @@ from rotkehlchen.tasks.events import (
 )
 from rotkehlchen.types import (
     AVAILABLE_MODULES_MAP,
+    CHAINS_WITH_PENDING_TX_DECODING_TYPE,
     CHAINS_WITH_TRANSACTION_DECODERS_TYPE,
     CHAINS_WITH_TRANSACTIONS_TYPE,
     CHAINS_WITH_TX_DECODING_TYPE,
@@ -1825,9 +1826,8 @@ class RestAPI:
         )
 
     def get_messages(self) -> Response:
-        warnings = self.rotkehlchen.msg_aggregator.consume_warnings()
-        errors = self.rotkehlchen.msg_aggregator.consume_errors()
-        result = {'warnings': warnings, 'errors': errors}
+        messages, dropped = self.rotkehlchen.msg_aggregator.consume_held()
+        result = {'messages': messages, 'dropped': dropped}
         return api_response(_wrap_in_ok_result(result), status_code=HTTPStatus.OK)
 
     @async_api_call()
@@ -2676,7 +2676,7 @@ class RestAPI:
     @async_api_call()
     def decode_transactions(
             self,
-            chain: CHAINS_WITH_TX_DECODING_TYPE,
+            chain: CHAINS_WITH_PENDING_TX_DECODING_TYPE,
             force_redecode: bool,
     ) -> dict[str, Any]:
         return self.transactions_service.decode_transactions(
@@ -3968,9 +3968,11 @@ class RestAPI:
 
     @accounting_update_required('Historical balance processing is disabled')
     def _trigger_historical_balance_processing(self) -> dict[str, Any]:
-        if (task_manager := self.rotkehlchen.task_manager) is not None:  # None if logout races us
+        return _wrap_in_ok_result(result=(
+            # task_manager is None if logout races us
+            (task_manager := self.rotkehlchen.task_manager) is not None and
             task_manager.trigger_historical_balance_processing()
-        return OK_RESULT
+        ))
 
     @async_api_call()
     def trigger_task(self, task: TaskName) -> dict[str, Any]:
@@ -4114,6 +4116,7 @@ class RestAPI:
         return {
             'event_identifier': event.event_identifier,
             'group_identifier': event.group_identifier,
+            'tx_hash': None if event.tx_hash is None else str(event.tx_hash),
             'timestamp': event.timestamp,
             'block_number': event.block_number,
             'tracked_balance': str(event.tracked_balance),
@@ -4164,6 +4167,7 @@ class RestAPI:
             address: ChecksumEvmAddress,
             asset: Asset,
             tolerance: FVal,
+            to_timestamp: Timestamp | None = None,
     ) -> dict[str, Any]:
         evm_manager = self.rotkehlchen.chains_aggregator.get_evm_manager(chain_id=evm_chain)
         if not evm_manager.node_inquirer.has_archive_node():
@@ -4181,9 +4185,8 @@ class RestAPI:
                 address=address,
                 asset=asset,
                 tolerance=tolerance,
+                to_timestamp=to_timestamp,
             )
-        except NotFoundError as e:
-            return wrap_in_fail_result(str(e), status_code=HTTPStatus.NOT_FOUND)
         except (RemoteError, DeserializationError, UnknownAsset, WrongAssetType) as e:
             return wrap_in_fail_result(str(e), status_code=HTTPStatus.CONFLICT)
 

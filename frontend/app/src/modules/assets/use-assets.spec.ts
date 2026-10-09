@@ -120,7 +120,7 @@ describe('useAssets', () => {
       }));
     });
 
-    it('should report a failed check as a failure, not as no update, and notify', async () => {
+    it('should report a failed check as a failure, not as no update, leaving it to its dock row', async () => {
       whenTask(err(TaskFailed({ message: 'failed' })));
 
       const result = await store.checkForUpdate();
@@ -128,7 +128,7 @@ describe('useAssets', () => {
       expect(api.checkForAssetUpdate).toHaveBeenCalledOnce();
       assert(!result.ok);
       expect(result.error.message).toBe('failed');
-      expect(useNotificationDispatcher().notify).toHaveBeenCalledOnce();
+      expect(useNotificationDispatcher().notify).not.toHaveBeenCalled();
     });
 
     it('should report a cancelled check as a failure without notifying', async () => {
@@ -156,9 +156,7 @@ describe('useAssets', () => {
 
       expect(api.performUpdate).toHaveBeenCalledOnce();
       expect(useNotificationDispatcher().notify).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        done: true,
-      });
+      expect(result).toEqual(ok({ kind: 'done' }));
     });
 
     it('should complete with chain identifier', async () => {
@@ -176,23 +174,17 @@ describe('useAssets', () => {
 
       expect(api.performUpdate).toHaveBeenCalledOnce();
       expect(useNotificationDispatcher().notify).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        done: false,
-        conflicts,
-      });
+      expect(result).toEqual(ok({ conflicts, kind: 'conflicts' }));
     });
 
-    it('should handle error', async () => {
+    it('should return the failure with its reason and leave reporting it to the caller', async () => {
       whenTask(err(TaskFailed({ message: 'failed' })));
 
       const result = await store.applyUpdates(payload);
 
       expect(api.performUpdate).toHaveBeenCalledOnce();
-      expect(result).toEqual({
-        done: false,
-      });
-
-      expect(useNotificationDispatcher().notify).toHaveBeenCalled();
+      expect(result).toEqual(err(TaskFailed({ message: 'failed' })));
+      expect(useNotificationDispatcher().notify).not.toHaveBeenCalled();
     });
   });
 

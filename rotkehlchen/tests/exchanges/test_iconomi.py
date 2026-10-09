@@ -12,6 +12,7 @@ from rotkehlchen.history.events.structures.swap import SwapEvent
 from rotkehlchen.history.events.structures.types import HistoryEventSubType
 from rotkehlchen.history.events.utils import create_group_identifier_from_unique_id
 from rotkehlchen.tests.utils.factories import make_api_key, make_api_secret
+from rotkehlchen.tests.utils.messages import consume_warnings
 from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.types import Location, Timestamp, TimestampMS
 from rotkehlchen.user_messages import MessagesAggregator
@@ -31,7 +32,7 @@ def test_name():
     assert exchange.name == 'iconomi1'
 
 
-def test_iconomi_query_balances_unknown_asset(function_scope_iconomi):
+def test_iconomi_query_balances_unknown_asset(function_scope_iconomi, caplog):
     """Test that if a iconomi balance query returns unknown asset no exception
     is raised and a warning is generated. Same for unsupported assets"""
     iconomi = function_scope_iconomi
@@ -50,10 +51,10 @@ def test_iconomi_query_balances_unknown_asset(function_scope_iconomi):
     assert balances[A_REP].amount == FVal('0.5314532451')
     assert balances[A_REP].value == FVal('0.79717986765')
 
-    warnings = iconomi.msg_aggregator.consume_warnings()
-    assert len(warnings) == 2
-    assert 'unsupported ICONOMI strategy CAR' in warnings[0]
-    assert 'unsupported ICONOMI strategy SCND' in warnings[1]
+    warnings = consume_warnings(iconomi.msg_aggregator)
+    assert len(warnings) == 2  # one problem sent twice, held once with its newest sentence
+    for strategy in ('CAR', 'SCND'):
+        assert any(f'unsupported ICONOMI strategy {strategy}' in line for line in caplog.messages)
 
 
 def test_query_trade_history(function_scope_iconomi):

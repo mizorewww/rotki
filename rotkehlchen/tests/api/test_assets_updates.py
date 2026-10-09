@@ -25,6 +25,7 @@ from rotkehlchen.tests.utils.api import (
     assert_proper_sync_response_with_result,
     wait_for_async_task,
 )
+from rotkehlchen.tests.utils.messages import consume_errors, consume_warnings
 from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.types import ChainID, Timestamp, TokenKind
 
@@ -81,7 +82,11 @@ def mock_asset_updates(original_requests_get: Callable[..., requests.Response], 
     'globaldb_cached_statements',
     [GLOBALDB_CACHED_STATEMENTS_FOR_FILE_CLEANUP],
 )
-def test_simple_update(rotkehlchen_api_server: APIServer, globaldb: GlobalDBHandler) -> None:
+def test_simple_update(
+        rotkehlchen_api_server: APIServer,
+        globaldb: GlobalDBHandler,
+        caplog: pytest.LogCaptureFixture,
+) -> None:
     """Test that the happy case of update works.
 
     - Test that up_to_version argument works
@@ -207,13 +212,13 @@ INSERT INTO assets(identifier, name, type) VALUES('EUR', 'Ευρώ', 'A'); INSER
         else:
             result = assert_proper_sync_response_with_result(response)
 
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
 
         assert len(errors) == 0, f'Found errors: {errors}'
-        assert len(warnings) == 2
-        assert f'Skipping assets update 999999993 since it requires a min schema of {GLOBAL_DB_VERSION - 2} and max schema of {GLOBAL_DB_VERSION - 1} while the local DB schema version is {GLOBAL_DB_VERSION}. You will have to follow an alternative method to obtain the assets of this update. Easiest would be to reset global DB' in warnings[0]  # noqa: E501
-        assert f'Skipping assets update 999999996 since it requires a min schema of {GLOBAL_DB_VERSION + 1}. Please upgrade rotki to get this assets update' in warnings[1]  # noqa: E501
+        assert len(warnings) == 2  # problems with one identity are held once; read the log
+        assert any(f'Skipping assets update 999999993 since it requires a min schema of {GLOBAL_DB_VERSION - 2} and max schema of {GLOBAL_DB_VERSION - 1} while the local DB schema version is {GLOBAL_DB_VERSION}. You will have to follow an alternative method to obtain the assets of this update. Easiest would be to reset global DB' in line for line in caplog.messages)  # noqa: E501
+        assert any(f'Skipping assets update 999999996 since it requires a min schema of {GLOBAL_DB_VERSION + 1}. Please upgrade rotki to get this assets update' in line for line in caplog.messages)  # noqa: E501
 
         assert result is True
         assert globaldb.get_setting_value(ASSETS_VERSION_KEY, 0) == 999999995
@@ -356,8 +361,8 @@ INSERT INTO assets(identifier, name, type) VALUES('eip155:1/erc20:0x1b175474E890
         assert count_total_assets() == start_assets_num
         with pytest.raises(UnknownAsset):
             Asset('121-ada-FADS-as').resolve_to_asset_with_name_and_type()
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 0, f'Found warnings: {warnings}'
         # See that we get 3 conflicts
@@ -485,8 +490,8 @@ INSERT INTO assets(identifier, name, type) VALUES('eip155:1/erc20:0x1b175474E890
         # check conflicts were solved as per the given choices and new asset also added
         assert result is True
         assert globaldb.get_setting_value(ASSETS_VERSION_KEY, 0) == 999999991
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 0, f'Found warnings: {warnings}'
         dai = EvmToken('eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F')
@@ -629,8 +634,8 @@ INSERT INTO assets(identifier, name, type) VALUES("eip155:1/erc20:0xa74476443119
         assert count_total_assets() == start_assets_num
         with pytest.raises(UnknownAsset):
             Asset('121-ada-FADS-as').resolve_to_asset_with_name_and_type()
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 0, f'Found warnings: {warnings}'
         # See that we get a conflict
@@ -722,8 +727,8 @@ INSERT INTO assets(identifier, name, type) VALUES("eip155:1/erc20:0xa74476443119
         assert new_asset.coingecko == ''
         assert new_asset.cryptocompare == ''
 
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 1
         assert f'Failed to resolve conflict for {gnt.identifier} in the DB during the v999999991 assets update. Skipping entry' in warnings[0]  # noqa: E501
@@ -791,8 +796,8 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
         assert count_total_assets() == start_assets_num
         with pytest.raises(UnknownAsset):
             Asset('121-ada-FADS-as').resolve_to_asset_with_name_and_type()
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 0, f'Found warnings: {warnings}'
         # See that we get a conflict
@@ -878,8 +883,8 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
         assert new_asset.coingecko == ''
         assert new_asset.cryptocompare == ''
 
-        errors = rotki.msg_aggregator.consume_errors()
-        warnings = rotki.msg_aggregator.consume_warnings()
+        errors = consume_errors(rotki.msg_aggregator)
+        warnings = consume_warnings(rotki.msg_aggregator)
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 1
         assert 'Failed to resolve conflict for eip155:1/erc20:0xa74476443119A942dE498590Fe1f2454d7D4aC0d in the DB during the v15 assets update. Skipping entry' in warnings[0]  # noqa: E501

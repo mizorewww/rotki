@@ -86,6 +86,7 @@ from rotkehlchen.tests.utils.kraken import (
     KRAKEN_FUTURES_ACCOUNT_LOG_RESPONSE,
     MockKraken,
 )
+from rotkehlchen.tests.utils.messages import consume_errors, consume_warnings
 from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.tests.utils.pnl_report import query_api_create_and_get_report
 from rotkehlchen.types import ApiKey, ApiSecret, AssetAmount, Location, Timestamp, TimestampMS
@@ -215,7 +216,7 @@ def test_kraken_connection_reset_does_not_notify_user(kraken: Kraken) -> None:
 
     assert events == []
     assert queried_until == Timestamp(1)
-    assert kraken.msg_aggregator.consume_errors() == []
+    assert consume_errors(kraken.msg_aggregator) == []
 
 
 @pytest.mark.asset_test
@@ -557,10 +558,11 @@ def test_kraken_query_balances_unknown_asset(kraken):
 
 
 @pytest.mark.parametrize('use_clean_caching_directory', [True])
+@pytest.mark.parametrize('function_scope_initialize_mock_rotki_notifier', [True])
 def test_kraken_query_deposit_withdrawals_unknown_asset(kraken):
     """Test that if a kraken deposits_withdrawals query returns unknown asset
-    no exception is raised and a warning is generated and the deposits/withdrawals
-    with valid assets are still returned"""
+    no exception is raised, an unknown asset message is sent for it and the
+    deposits/withdrawals with valid assets are still returned"""
     input_ledger = """
     {
     "ledger": {
@@ -634,8 +636,15 @@ def test_kraken_query_deposit_withdrawals_unknown_asset(kraken):
     assert movements[2].amount == FVal('4000000')
     assert movements[2].event_type == HistoryEventType.EXCHANGE_TRANSFER
     assert movements[3].event_subtype == HistoryEventSubType.FEE
-    errors = kraken.msg_aggregator.consume_errors()
-    assert len(errors) == 1
+    assert [
+        message.data['identifier']
+        for message in kraken.msg_aggregator.rotki_notifier.messages
+        if message.message_type == WSMessageType.EXCHANGE_UNKNOWN_ASSET
+    ] == ['YYYYYYYYYYYY']
+    assert not any(
+        message.message_type == WSMessageType.USER_MESSAGE
+        for message in kraken.msg_aggregator.rotki_notifier.messages
+    )
 
 
 @pytest.mark.parametrize('use_clean_caching_directory', [True])
@@ -720,8 +729,8 @@ def test_kraken_trade_with_spend_receive(kraken):
             sequence_index=3,
         )]
 
-    errors = kraken.msg_aggregator.consume_errors()
-    warnings = kraken.msg_aggregator.consume_warnings()
+    errors = consume_errors(kraken.msg_aggregator)
+    warnings = consume_warnings(kraken.msg_aggregator)
     assert len(errors) == 0
     assert len(warnings) == 0
 
@@ -796,8 +805,8 @@ def test_kraken_trade_with_same_spend_receive_amount(kraken):
             location_label=kraken.name,
         )]
 
-    errors = kraken.msg_aggregator.consume_errors()
-    warnings = kraken.msg_aggregator.consume_warnings()
+    errors = consume_errors(kraken.msg_aggregator)
+    warnings = consume_warnings(kraken.msg_aggregator)
     assert len(errors) == 0
     assert len(warnings) == 0
 
@@ -892,8 +901,8 @@ def test_kraken_tokenized_asset_trade(kraken):
             location_label=kraken.name,
         )]
 
-    assert len(kraken.msg_aggregator.consume_errors()) == 0
-    assert len(kraken.msg_aggregator.consume_warnings()) == 0
+    assert len(consume_errors(kraken.msg_aggregator)) == 0
+    assert len(consume_warnings(kraken.msg_aggregator)) == 0
 
     # A group with more than 2 spend/receive legs containing a canceling pair but
     # no tokenized_asset leg is left untouched by the settlement leg removal
@@ -1006,8 +1015,8 @@ def test_kraken_trade_with_adjustment(kraken):
                 location_label=kraken.name,
             )]
 
-    errors = kraken.msg_aggregator.consume_errors()
-    warnings = kraken.msg_aggregator.consume_warnings()
+    errors = consume_errors(kraken.msg_aggregator)
+    warnings = consume_warnings(kraken.msg_aggregator)
     assert len(errors) == 0
     assert len(warnings) == 0
 
@@ -1247,8 +1256,8 @@ def test_kraken_trade_no_counterpart(kraken):
                 location_label=kraken.name,
             )]
 
-    errors = kraken.msg_aggregator.consume_errors()
-    warnings = kraken.msg_aggregator.consume_warnings()
+    errors = consume_errors(kraken.msg_aggregator)
+    warnings = consume_warnings(kraken.msg_aggregator)
     assert len(errors) == 0
     assert len(warnings) == 0
 
@@ -1332,8 +1341,8 @@ def test_kraken_trade_no_counterpart_resolves_pair(kraken):
             group_identifier=group_identifier,
             location_label=kraken.name,
         )]
-    assert len(kraken.msg_aggregator.consume_errors()) == 0
-    assert len(kraken.msg_aggregator.consume_warnings()) == 0
+    assert len(consume_errors(kraken.msg_aggregator)) == 0
+    assert len(consume_warnings(kraken.msg_aggregator)) == 0
 
 
 @pytest.mark.parametrize('use_clean_caching_directory', [True])
@@ -1410,7 +1419,12 @@ def test_trade_from_kraken_unexpected_data(kraken):
     "count": 2
 }"""
 
-    def query_kraken_and_test(input_trades, expected_warnings_num, expected_errors_num):
+    def query_kraken_and_test(
+            input_trades,
+            expected_warnings_num,
+            expected_errors_num,
+            expected_unknown_assets=0,
+    ):
         # delete kraken history entries so they get requeried
         with kraken.history_events_db.db.user_write() as cursor:
             location = Location.KRAKEN
@@ -1423,7 +1437,10 @@ def test_trade_from_kraken_unexpected_data(kraken):
                 (f'{location}_history_events_%',),
             )
 
-        with _patch_ledger(kraken, input_trades):
+        with (
+            _patch_ledger(kraken, input_trades),
+            patch.object(kraken, 'send_unknown_asset_message') as unknown_asset_message,
+        ):
             kraken.query_history_events()
 
         with kraken.db.conn.read_ctx() as cursor:
@@ -1432,15 +1449,16 @@ def test_trade_from_kraken_unexpected_data(kraken):
                 filter_query=HistoryEventFilterQuery.make(location=Location.KRAKEN),
             )
 
-        if expected_warnings_num == 0 and expected_errors_num == 0:
+        assert unknown_asset_message.call_count == expected_unknown_assets
+        if expected_warnings_num == expected_errors_num == expected_unknown_assets == 0:
             assert len(events) == 3
             assert events[0].asset == A_EUR
             assert events[1].asset == A_BTC
             assert events[2].asset == A_EUR
         else:
             assert len(events) == 0
-        errors = kraken.msg_aggregator.consume_errors()
-        warnings = kraken.msg_aggregator.consume_warnings()
+        errors = consume_errors(kraken.msg_aggregator)
+        warnings = consume_warnings(kraken.msg_aggregator)
         assert len(errors) == expected_errors_num
         assert len(warnings) == expected_warnings_num
 
@@ -1455,7 +1473,12 @@ def test_trade_from_kraken_unexpected_data(kraken):
     # From here and on let's check trades with unexpected data
     input_trades = test_trades
     input_trades = input_trades.replace('"asset": "XXBT"', '"asset": "lefty"')
-    query_kraken_and_test(input_trades, expected_warnings_num=0, expected_errors_num=1)
+    query_kraken_and_test(
+        input_trades,
+        expected_warnings_num=0,
+        expected_errors_num=0,
+        expected_unknown_assets=1,
+    )
 
     input_trades = test_trades
     input_trades = input_trades.replace('"time": 1458994442.063', '"time": "dsdsad"')

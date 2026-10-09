@@ -315,12 +315,11 @@ class BitcoinCommonManager(ChainManagerWithTransactions[BTCAddress]):
             )
         if len(tx_list) == 0:
             log.debug(f'No new transactions found for {self.blockchain!s} accounts {accounts_str}')
-            if len(new_addresses) != 0:
-                # Nothing new came back, but the saved transactions the newly tracked
-                # addresses appear in were marked above and still need decoding with them
-                # tracked. Without this they would wait for a query that returns something.
-                self.decode_transactions()
-
+            # Nothing new came back, but saved transactions may still be pending decoding:
+            # the ones the newly tracked addresses appear in were marked above, and others
+            # may have been marked without a query, as a DB upgrade does. Without this they
+            # would wait for a query that returns something.
+            self.decode_transactions()
             return
 
         with self.database.conn.write_ctx() as write_cursor:
@@ -489,11 +488,16 @@ class BitcoinCommonManager(ChainManagerWithTransactions[BTCAddress]):
         return self.decode_transactions(tx_ids=tx_ids)
 
     def mark_addresses_transactions_for_redecode(self, addresses: list[BTCAddress]) -> None:
-        """Mark the saved transactions the given addresses take part in as pending decoding.
+        """Mark the saved transactions the given addresses take part in, but were not yet
+        saved for, as pending decoding.
 
         The events of a bitcoin transaction depend on which of its addresses are tracked, so
         a transaction that was decoded while one of these was untracked is now outdated. It
         needs no querying since the transactions are already saved.
+
+        A transaction already saved for the address was decoded with it tracked and is left
+        alone. That is what an address has when only its query checkpoint was reset to pull
+        its history again, and redecoding all of it would replace events for no reason.
         """
         with self.database.conn.write_ctx() as write_cursor:
             tx_ids: set[BTCTxId] = set()
@@ -502,6 +506,7 @@ class BitcoinCommonManager(ChainManagerWithTransactions[BTCAddress]):
                     cursor=write_cursor,
                     location=self.location,
                     address=self.get_api_address(address),
+                    not_queried_for=address,
                 ))
 
             if len(tx_ids) == 0:
@@ -936,8 +941,46 @@ class BitcoinCommonManager(ChainManagerWithTransactions[BTCAddress]):
                     (event := self._maybe_decode_op_return(tx=tx, script=tx_io.script)) is not None
                 ):
                     op_return_events.append(event)
+                elif (
+                    (
+                        tx.is_coinbase and direction == BtcTxIODirection.INPUT and
+                        tx_io.value == ZERO
+                    ) or
+                    (
+                        tx_io.value == ZERO and tx_io.script is not None and
+                        tx_io.script[:1] == OpCodes.OP_RETURN and
+                        # A tracked address may spend into an op_return we can't decode (e.g. a
+                        # malformed script). That is still an error, so only skip the output
+                        # when the transaction is not tracked on its input side.
+                        not any(x.address in self.tracked_accounts_set for x in tx.inputs)
+                    )
+                ):
+                    # Expected zero-valued coinbase placeholder input, or a zero-valued
+                    # addressless op_return output of an untracked transaction.
+                    continue
                 else:  # Unable to decode TxIO if it has no address and isn't op_return
                     log.error(f'Failed to decode {tx_io} in transaction {tx.tx_id}. Skipping.')
+
+        if tx.is_coinbase:
+            # A coinbase transaction pays newly minted coins. Its single input creates value
+            # instead of spending it, so the outputs a tracked address receives are mining
+            # rewards. Its input is deserialized as a zero-valued placeholder without an
+            # address and is not aggregated here.
+            reward_events: list[BitcoinEvent] = []
+            for output_address, amount in io_totals_per_address[BtcTxIODirection.OUTPUT].items():
+                if amount == ZERO or output_address not in self.tracked_accounts_set:
+                    continue
+                reward_events.append(self.create_event(
+                    tx=tx,
+                    event_type=HistoryEventType.RECEIVE,
+                    event_subtype=HistoryEventSubType.REWARD,
+                    amount=amount,
+                    notes=f'Receive {amount} {self.asset.identifier} as a mining reward',
+                    location_label=output_address,
+                ))
+            for idx, event in enumerate(reward_events):
+                event.sequence_index = idx
+            return reward_events
 
         # Handle self transfers before fees to avoid including self transfer amounts
         # when calculating the proportional fee shares.

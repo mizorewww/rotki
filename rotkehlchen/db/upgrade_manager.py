@@ -39,6 +39,7 @@ from rotkehlchen.db.upgrades.v52_v53 import upgrade_v52_to_v53
 from rotkehlchen.db.upgrades.v53_v54 import upgrade_v53_to_v54
 from rotkehlchen.errors.misc import DBUpgradeError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.utils.backups import auto_backups_enabled
 from rotkehlchen.utils.misc import ts_now
 from rotkehlchen.utils.upgrades import DBUpgradeProgressHandler, UpgradeRecord
 
@@ -146,7 +147,9 @@ class DBUpgradeManager:
             2. If at from_version make a DB backup before performing the upgrade
             3. Perform the upgrade action
             4. If something went wrong during upgrade restore backup and quit
-            5. If all went well set version and delete the backup
+            5. If all went well set version and retain the backup
+
+        With automatic backups disabled, upgrade failures require manual recovery.
 
         We do a WAL checkpoint at the start. That blocks until there is no database
         writer and all readers are reading from the most recent database snapshot. It
@@ -166,10 +169,12 @@ class DBUpgradeManager:
 
         # First make a backup of the DB
         tmp_db_filename = f'{ts_now()}_rotkehlchen_db_v{upgrade.from_version}.backup'
-        shutil.copyfile(
-            os.path.join(self.db.user_data_dir, USERDB_NAME),
-            os.path.join(self.db.user_data_dir, tmp_db_filename),
-        )
+        backup_enabled = auto_backups_enabled()
+        if backup_enabled:
+            shutil.copyfile(
+                os.path.join(self.db.user_data_dir, USERDB_NAME),
+                os.path.join(self.db.user_data_dir, tmp_db_filename),
+            )
 
         # Add a flag to the db that an upgrade is happening
         with self.db.user_write() as write_cursor:
@@ -188,12 +193,18 @@ class DBUpgradeManager:
                 f'Failed at database upgrade from version {upgrade.from_version} to '
                 f'{to_version}: {e!s}'
             )
+            if not backup_enabled:
+                error_message += (
+                    '. Automatic backups are disabled by ROTKI_DISABLE_AUTO_BACKUPS=1; '
+                    'no backup was created or restored. Manual recovery is required.'
+                )
             stacktrace = traceback.format_exc()
             log.error(f'{error_message}\n{stacktrace}')
-            shutil.copyfile(
-                os.path.join(self.db.user_data_dir, tmp_db_filename),
-                os.path.join(self.db.user_data_dir, USERDB_NAME),
-            )
+            if backup_enabled:
+                shutil.copyfile(
+                    os.path.join(self.db.user_data_dir, tmp_db_filename),
+                    os.path.join(self.db.user_data_dir, USERDB_NAME),
+                )
             raise DBUpgradeError(error_message) from e
 
         # Upgrade success all is good - Note: We keep the backups even for success

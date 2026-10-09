@@ -18,6 +18,7 @@ from rotkehlchen.globaldb.utils import (
     globaldb_get_setting_value,
 )
 from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.utils.backups import auto_backups_enabled
 from rotkehlchen.utils.misc import ts_now
 from rotkehlchen.utils.upgrades import DBUpgradeProgressHandler, UpgradeRecord
 
@@ -176,7 +177,9 @@ def _perform_single_upgrade(
     # Create a backup
     tmp_db_filename = f'{ts_now()}_global_db_v{upgrade.from_version}.backup'
     tmp_db_path = global_dir / tmp_db_filename
-    shutil.copyfile(global_dir / db_filename, tmp_db_path)
+    backup_enabled = auto_backups_enabled()
+    if backup_enabled:
+        shutil.copyfile(global_dir / db_filename, tmp_db_path)
 
     with connection.write_ctx() as cursor:
         cursor.execute(
@@ -192,9 +195,15 @@ def _perform_single_upgrade(
             f'Failed at global DB upgrade from version {upgrade.from_version} to '
             f'{to_version}: {e!s}'
         )
+        if not backup_enabled:
+            error_message += (
+                '. Automatic backups are disabled by ROTKI_DISABLE_AUTO_BACKUPS=1; '
+                'no backup was created or restored. Manual recovery is required.'
+            )
         stacktrace = traceback.format_exc()
         log.error(f'{error_message}\n{stacktrace}')
-        shutil.copyfile(tmp_db_path, global_dir / db_filename)
+        if backup_enabled:
+            shutil.copyfile(tmp_db_path, global_dir / db_filename)
         raise ValueError(error_message) from e
 
     # single upgrade successful

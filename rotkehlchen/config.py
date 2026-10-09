@@ -4,7 +4,9 @@ import platform
 import shutil
 from pathlib import Path
 
+from rotkehlchen.errors.misc import SystemPermissionError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.utils.backups import auto_backups_enabled
 from rotkehlchen.utils.misc import is_production
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,11 @@ def default_data_directory() -> Path:
     # If old data directory exists and new does not exist copy stuff
     old_dir = old_data_directory()
     if old_dir.exists() and not datadir.exists():
+        if not auto_backups_enabled():
+            raise SystemPermissionError(
+                'Legacy data directory requires manual relocation because automatic data '
+                'copies are disabled by ROTKI_DISABLE_AUTO_BACKUPS=1.',
+            )
         log.info(f'First time using standard data directory. Copying from {old_dir} to {datadir}')
         shutil.copytree(old_dir, datadir)
 

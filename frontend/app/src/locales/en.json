@@ -321,7 +321,7 @@
     "down_from": "down from {count}",
     "locked": "Premium",
     "locked_hint": "This requires the {tier} tier.",
-    "locked_hint_generic": "This requires a premium subscription.",
+    "locked_hint_generic": "This requires a rotki Premium plan.",
     "new": "New",
     "new_count": "{count} new | {count} new",
     "remind_later": "Remind me later",
@@ -506,22 +506,6 @@
           "timeout": "Timed out while retrieving token details. You can enter the token information manually.",
           "title": "Retrieving token details for {address} ({evmChain})"
         }
-      },
-      "update": {
-        "error": {
-          "description": "The asset database update failed: {message}"
-        },
-        "task": {
-          "title": "Updating assets database"
-        }
-      },
-      "versions": {
-        "error": {
-          "description": "The asset database update check failed: {message}"
-        },
-        "task": {
-          "title": "Checking for asset database updates"
-        }
       }
     },
     "balances": {
@@ -562,14 +546,6 @@
       "create_oracle_cache": {
         "already_running": "Task is already running",
         "task": "Building the {source} price cache from {fromAsset} to {toAsset}"
-      },
-      "detect_tokens": {
-        "error": {
-          "message": "Failed to detect tokens for {address} ({chain}): {error}"
-        },
-        "task": {
-          "title": "Fetch detected tokens"
-        }
       },
       "exchange_removal": {
         "description": "The removal of {exchange} failed due to: {error}",
@@ -753,6 +729,7 @@
     },
     "notifications": {
       "consume": {
+        "dropped": "While no window was connected, {count} older backend messages were discarded to make room for newer ones. Check the logs for the full record.",
         "message_title": "Backend messages"
       }
     },
@@ -807,9 +784,6 @@
       }
     },
     "repulling_eth_staking": {
-      "error": {
-        "description": "Failed to re-pull {entryType} events"
-      },
       "success": {
         "address_entry": "{address}: {count}",
         "description": "{count} new {entryType} events re-pulled",
@@ -824,9 +798,6 @@
       }
     },
     "repulling_exchange_events": {
-      "error": {
-        "description": "Failed to re-pull events for {exchange}"
-      },
       "success": {
         "description": "{length} events re-pulled",
         "no_events_description": "No events re-pulled"
@@ -837,10 +808,6 @@
       }
     },
     "repulling_transaction": {
-      "error": {
-        "description": "Failed to re-pull transactions for {address} ({chain}).",
-        "no_address_or_chain_transaction": "Failed to re-pull transactions"
-      },
       "success": {
         "action": "See pulled transactions",
         "description": "{length} transactions re-pulled",
@@ -1282,9 +1249,8 @@
       "tooltip": "This is a fiat currency movement. Fiat movements typically don't have a corresponding on-chain event and can usually be safely ignored."
     },
     "premium": {
-      "free_tooltip": "Asset movement matching requires a minimum of {tier} tier. {link} to unlock this feature.",
-      "link": "Upgrade",
-      "premium_tooltip": "Asset movement matching requires a minimum of {tier} tier. Your current tier is {currentTier}. {link} to unlock it."
+      "locked": "With the {tier} plan, rotki matches asset movements automatically, and you can link the rest by hand. You are on the {currentTier} plan. {link} to turn on matching.",
+      "unmatched": "You have one unmatched asset movement. With the {tier} plan, rotki matches asset movements automatically, and you can link the rest by hand. You are on the {currentTier} plan. {link} to turn on matching. | You have {count} unmatched asset movements. With the {tier} plan, rotki matches asset movements automatically, and you can link the rest by hand. You are on the {currentTier} plan. {link} to turn on matching."
     },
     "resolved": {
       "external_deposit": "Deposit resolved as income from an untracked source.",
@@ -1320,6 +1286,7 @@
     }
   },
   "asset_select": {
+    "filter_placeholder": "Filter by symbol or name",
     "label": "Asset",
     "no_results": "No assets matching your search",
     "placeholder": "Search by asset symbol, name, or the contract address."
@@ -1749,17 +1716,20 @@
     "asset": "Asset",
     "block": "Block",
     "chain": "Chain",
-    "chain_missing_archive_node": "No archive node configured for {chain}. Configure one in {link} to run this check for this chain.",
+    "chain_missing_archive_node": "This check requires an archive node. No archive node is connected for {chain}. Add or connect one in {link}.",
     "checked": "Checked {probes} points.",
     "difference": "Difference",
     "event": "Tx",
     "first_diverged": "First diverged event",
     "last_matching": "Last matching event",
     "location_label": "Location label",
-    "missing_group": "No transaction group",
-    "no_divergence": "The latest tracked and on-chain balances match. No persistent divergence to locate. Checked {probes} points.",
+    "missing_group": "No transaction",
+    "new_search": "New search",
+    "no_checkpoints": "No tracked wallet balance checkpoints are available up to this time. Check for a missing earlier receive or an incorrectly recorded spend.",
+    "no_divergence": "The tracked and on-chain balances match at the end of the searched history. No persistent divergence to locate. Checked {probes} points.",
     "no_options": "No EVM location labels are available.",
     "onchain": "On-chain",
+    "search_failed": "The last search failed. See the activity dock for details.",
     "settings_link": "RPC node settings",
     "title": "Find balance divergence",
     "tracked": "Tracked",
@@ -1861,11 +1831,11 @@
   },
   "blockchain_balances": {
     "add_account": "Add Account",
-    "add_validator_premium": "Adding ETH staking validators is a premium feature. Upgrade to rotki Premium to add validators.",
+    "add_validator_premium": "Adding ETH staking validators needs a rotki Premium plan.",
     "binance_warning": "Binance Smart Chain accounts can only be detected with a paid Etherscan key.",
     "early_chain_warning": "rotki's {chain} integration is early: only a limited set of protocols is decoded on this chain for now. Transactions from other protocols will appear as plain transfers, with more protocols added over time.",
-    "eth_staking_limit_error": "Adding this validator would put you over your {currentTier} plan's ETH staking limit of {limit} ETH. Upgrade your plan via {link} or contact us for a custom plan to raise your limit.",
-    "eth_staking_no_access": "Your {currentTier} plan doesn't include ETH staking. Upgrade your plan via {link} or contact us for a custom plan to get access.",
+    "eth_staking_limit_error": "Adding this validator would put you over your {currentTier} plan's ETH staking limit of {limit} ETH. {link}, or contact us for a custom plan, to raise your limit.",
+    "eth_staking_no_access": "Your {currentTier} plan doesn't include ETH staking. {link}, or contact us for a custom plan, to get access.",
     "evm_detection": {
       "found": "Added on {count} chain | Added on {count} chains",
       "none": "No new chains found",
@@ -1895,7 +1865,6 @@
       "validators": "Validators"
     },
     "validator_index_label": "Ethereum validator No. {index}",
-    "validator_limit_reached": "You have reached the ETH staking validator limit ({total}/{limit}). {link} to add more validators.",
     "validators": {
       "auto_detection_info": "Validators are auto-detected from ETH deposits. Add the depositor address as an Ethereum account, decode its history events, then click refresh to update the list.",
       "consolidated": "Consolidated into:",
@@ -1950,8 +1919,8 @@
       "untracked_source_tooltip": "The source address {address} is not tracked by rotki, so the counterpart event cannot exist in your history. Resolve this bridge withdrawal by marking it as external income."
     },
     "premium": {
-      "free_tooltip": "Bridge transaction matching requires a minimum of {tier} tier. {link} to unlock this feature.",
-      "premium_tooltip": "Bridge transaction matching requires a minimum of {tier} tier. Your current tier is {currentTier}. {link} to unlock it."
+      "locked": "With the {tier} plan, rotki matches bridge transactions automatically, and you can link the rest by hand. You are on the {currentTier} plan. {link} to turn on matching.",
+      "unmatched": "You have one unmatched bridge transaction. With the {tier} plan, rotki matches bridge transactions automatically, and you can link the rest by hand. You are on the {currentTier} plan. {link} to turn on matching. | You have {count} unmatched bridge transactions. With the {tier} plan, rotki matches bridge transactions automatically, and you can link the rest by hand. You are on the {currentTier} plan. {link} to turn on matching."
     },
     "resolved": {
       "external_deposit": "Bridge deposit resolved as a payment to an external address.",
@@ -2782,6 +2751,10 @@
       "comparison_counts": "Customized transactions: {total}. Differences found: {changed}.",
       "comparison_unavailable": "This event comparison is unavailable. Only the latest check retains transaction details; retry to create a new comparison.",
       "detected": "Detected",
+      "divergence_from_start": "The balance already differs at the first tracked event. An earlier event may be missing, or the first event's amount may be wrong.",
+      "divergence_next_step": "Check the first diverged event for a wrong amount, or look for a missing event between the last matching and first diverged events.",
+      "divergence_no_mismatch": "The cause is probably not a missing or wrong event in this wallet. Look for an ignored event, or an event recorded under another account or protocol.",
+      "divergence_scope": "Compares the tracked wallet balance with the on-chain balance up to {date}.",
       "event_date": "Affected event:",
       "no_attempts": "No automatic checks or fixes have been attempted yet.",
       "redecoding_failed": "rotki could not compare the customized transactions with the current decoder. Your saved events were left unchanged.",
@@ -3059,10 +3032,6 @@
       "withdrawal_address": "Withdrawal Address"
     },
     "no_premium": "The ETH staking view is not available"
-  },
-  "eth2_validator_limit_row": {
-    "complete": "Only showing balances for {limit} out of {total} validators. Click {button} to purchase rotki Premium and view the complete validator balances.",
-    "label": "Validators"
   },
   "event_asset_price_update": {
     "description": "Set the price of this asset at the event's timestamp.",
@@ -3466,7 +3435,7 @@
       "hint": "Enter your Moralis API key",
       "title": "Moralis"
     },
-    "need_premium": "Upgrade to premium to use this feature.",
+    "need_premium": "This feature needs a rotki Premium plan.",
     "need_tier": "Requires {tier} tier or higher.",
     "no_services_found": "No services found",
     "opensea": {
@@ -4041,6 +4010,10 @@
             "label": "Title"
           }
         },
+        "open_failed": {
+          "email": "Could not open your mail client. Your report is still here: copy the email address or open Gmail from the menu next to Email.",
+          "generic": "Could not open the page in your browser. Your report is still here, so you can try again or pick another option."
+        },
         "submit_options": {
           "copy_email": "Copy \"{email}\"",
           "email": "Email",
@@ -4104,8 +4077,59 @@
     "lt": "<"
   },
   "historical_balances": {
+    "as_of": {
+      "end_of_year": "End of {year}",
+      "label": "Balances as of",
+      "today": "Today"
+    },
+    "empty": "No balances on this day.",
+    "empty_filtered": "No balances on this day match the filters.",
+    "error": "Could not load the balances: {message}",
+    "export": {
+      "action": "Export CSV",
+      "blocked": {
+        "empty": "There are no balances to export.",
+        "loading": "The balances are still loading.",
+        "pending": "Some prices are still loading. The export is available once every price is in.",
+        "processing": "Some history events have not been processed yet. Process them first so the export is up to date."
+      }
+    },
+    "filter": {
+      "search_hint": "Search using the asset name or symbol"
+    },
+    "mode": {
+      "collection": "By collection",
+      "flat": "By asset"
+    },
     "negative_balances": {
       "view_event_tooltip": "The negative balance was detected at this event, but it doesn't necessarily mean this event is the cause. The issue might originate from an earlier event during processing."
+    },
+    "premium_description": "See what every account held on any past day, rebuilt from your history events.",
+    "price": {
+      "missing": "No price",
+      "missing_hint": "No price was found for this asset on this day, so it is left out of the total.",
+      "partial_hint": "Some assets in this collection have no price on this day, so the value covers only the priced ones.",
+      "spam": "Spam",
+      "spam_hint": "This asset is marked as spam, so it is not priced and is left out of the total."
+    },
+    "processing": {
+      "action": "Process now",
+      "done_empty": "Your history events are processed, and there were no balances on this day.",
+      "empty_message": "If you expected balances on this day, your history events may not have been processed yet.",
+      "failed": "Could not start processing: {message}",
+      "message": "Some history events have not been processed yet, so these balances may be out of date.",
+      "not_started": "Processing can't start while a profit and loss report is being generated. Try again once the report finishes."
+    },
+    "table": {
+      "locations": "Locations"
+    },
+    "total": {
+      "coverage": "Rebuilt from your history events. Holdings without history events, such as manual balances, liabilities and ETH staking validators, are not included.",
+      "filtered": "(filtered)",
+      "missing": "{count} asset has no price for this day and is left out | {count} assets have no price for this day and are left out",
+      "pending": "{count} price still loading | {count} prices still loading",
+      "spam": "{count} spam asset is not priced | {count} spam assets are not priced",
+      "title": "Total value on {date}"
     }
   },
   "history_event_action": {
@@ -4495,7 +4519,7 @@
   },
   "kraken_page": {
     "loading": "Your Kraken staking information is loading...",
-    "no_premium": "Upgrade to premium to access Kraken staking information",
+    "no_premium": "Kraken staking information needs a rotki Premium plan",
     "page": {
       "api_key": "API key",
       "description": "To see your staking information you need to add a Kraken {link}",
@@ -4527,7 +4551,7 @@
     "title": "Earned Per Asset"
   },
   "liquity_page": {
-    "no_premium": "The Liquity staking statistic page is not included in the FREE version"
+    "no_premium": "The Liquity staking statistics are not available on your current plan"
   },
   "liquity_pools": {
     "liquidation_gains": "Unclaimed liquidation gains",
@@ -4826,7 +4850,7 @@
     "dashboard": {
       "liquidity_pools": {
         "pool_details": {
-          "premium_only": "See your complete assets overview with a Premium account "
+          "premium_only": "See your complete assets overview with a rotki Premium plan"
         },
         "pool_table": {
           "title": "LP Tokens"
@@ -4910,6 +4934,7 @@
     "statistics": "Statistics",
     "statistics_sub": {
       "graphs": "Graphs",
+      "historical_balances": "Historical Balances",
       "history_events": "Events Analysis",
       "snapshots": "Snapshots"
     },
@@ -4945,8 +4970,7 @@
     "select_collection": "Select collection",
     "sort": {
       "collection": "Collection"
-    },
-    "upgrade": "Displaying {limit} NFTs. To view more please upgrade to {link}"
+    }
   },
   "non_fungible_balances": {
     "column": {
@@ -4968,7 +4992,6 @@
       "title": "Title"
     },
     "last_updated": "Last updated: {datetime}",
-    "limit_warning": "The limit of {limit} user notes has been reached in the free plan. To get more notes you can upgrade to {link}",
     "rules": {
       "content": {
         "non_empty": "Please fill the note"
@@ -4988,10 +5011,6 @@
     "tooltip_unread": "Notifications, something new arrived"
   },
   "notification_messages": {
-    "backend": {
-      "title": "Backend",
-      "warning_title": "Some data was skipped during processing"
-    },
     "beaconchain_rate_limited": {
       "message": "Beaconcha.in is rate limited{until}. The following query failed:\n{endpoints}\nCheck logs for more details.|Beaconcha.in is rate limited{until}. The following {count} queries failed:\n{endpoints}\n\nCheck logs for more details.",
       "title": "Beaconcha.in Rate Limited"
@@ -5002,7 +5021,6 @@
       "summary": "Imported {imported}/{total} entries successfully.",
       "title": "CSV Import Result: {sourceName}"
     },
-    "deserialization_error": "We could not deserialize {count} assets for your accounts, please check the application logs for more information.",
     "new_detected_token": {
       "action": "See more",
       "message": "New token with identifier {identifier} was detected from event processing and queries.|{count} new tokens were detected from event processing and queries.",
@@ -5023,9 +5041,24 @@
     "reminder": {
       "open_calendar": "Open Calendar"
     },
+    "repeated": "{message} (seen {count} times)",
     "snapshot_failed": {
       "message": "Could not save the balance snapshot at {location}. {error}",
       "title": "Balance Snapshot failed"
+    },
+    "user_message": {
+      "auth_action": "Update credentials",
+      "title": {
+        "auth": "Credentials rejected",
+        "bad_data": "Unreadable data",
+        "internal": "Internal error",
+        "local_db": "Database problem",
+        "network": "Connection problem",
+        "price": "Missing price",
+        "unknown_asset": "Unknown asset",
+        "unsupported": "Not supported yet"
+      },
+      "with_subject": "{subject}: {title}"
     }
   },
   "notification_popup": {
@@ -5098,7 +5131,6 @@
         "to_date": "To Date"
       },
       "notification": {
-        "error": "Cache creation for {fromAsset} to {toAsset} on {source} failed: {error}",
         "success": "Cache for {fromAsset} to {toAsset} on {source} was successfully created",
         "title": "Oracle cache population"
       }
@@ -5204,6 +5236,19 @@
   },
   "pinned": {
     "tooltip": "Pinned Section"
+  },
+  "plan_limit": {
+    "hidden": "Your {plan} plan limit hides {hidden} of your {total} {label}. {link} to see all of them.",
+    "labels": {
+      "events": "events",
+      "nfts": "NFTs",
+      "notes": "notes",
+      "reports": "reports",
+      "validators": "validators"
+    },
+    "reached": "You have reached your {plan} plan limit of {limit} {label}. {link} to add more.",
+    "unprocessed": "This report only covers {from} until {to}. Your {plan} plan limit left {hidden} of its {total} {label} unprocessed. {link} to include them.",
+    "upgrade": "Upgrade your plan"
   },
   "poap_delivery_airdrops": {
     "title": "Claimable POAP Delivery NFTs"
@@ -5389,7 +5434,7 @@
     "try_again": "Please try again later."
   },
   "premium_lock": {
-    "tooltip": "Feature is only supported with a premium subscription"
+    "tooltip": "Available with a rotki Premium plan"
   },
   "premium_placeholder": {
     "current_plan": "{tier} plan",
@@ -6343,7 +6388,7 @@
   "task_manager": {
     "error": "An error occurred while processing task [{taskId}] '{title}': {error}"
   },
-  "theme_manager_lock": "The theme manager is not included in the FREE version",
+  "theme_manager_lock": "The theme manager is not available on your current plan",
   "theme_switch": {
     "auto": "Auto (Detect Device Theme)",
     "dark": "Dark",
@@ -6987,15 +7032,6 @@
     "messages": "A new version of rotki is available. See the {releaseNotes}.",
     "release_notes": "release notes",
     "restart": "rotki will restart in a moment to apply the update."
-  },
-  "upgrade_row": {
-    "events": "@:upgrade_row.first_line To view more please upgrade to {link}",
-    "events_premium": "@:upgrade_row.first_line To view more please {link}",
-    "first_line": "Processed {limit} out of {total} {label} from {from} until {to}.",
-    "rotki_premium": "rotki Premium",
-    "upgrade": "Displaying {limit} out of {total} {label}. To view more please upgrade to {link}",
-    "upgrade_premium": "Displaying {limit} out of {total} {label}. To view more please {link}",
-    "upgrade_your_plan": "upgrade your plan"
   },
   "user_dropdown": {
     "change_privacy_mode": {

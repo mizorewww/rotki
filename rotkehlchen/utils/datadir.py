@@ -16,7 +16,9 @@ from rotkehlchen.constants.misc import (
     USERDB_NAME,
     USERSDIR_NAME,
 )
+from rotkehlchen.errors.misc import SystemPermissionError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.utils.backups import auto_backups_enabled
 from rotkehlchen.utils.misc import ts_now
 
 if TYPE_CHECKING:
@@ -32,6 +34,12 @@ def _create_directory_with_potential_backup(data_dir: Path, name: str) -> Path:
     a user with that name. In which edge case we will try to rename and backup"""
     subdir = data_dir / name
     if (subdir / USERDB_NAME).exists():
+        if not auto_backups_enabled():
+            raise SystemPermissionError(
+                f'Cannot restructure directory {name}: it contains a user database. '
+                'Automatic backups are disabled by ROTKI_DISABLE_AUTO_BACKUPS=1; '
+                'manual relocation is required.',
+            )
         # someone had a user, called name ... and did not get moved with initial for loop
         try:  # this should not happen actually ...
             backup_name = f'auto_backup_{name}_user_{ts_now()}'

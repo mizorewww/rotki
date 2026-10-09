@@ -19,6 +19,7 @@ from rotkehlchen.db.utils import unlock_database
 from rotkehlchen.errors.api import AuthenticationError
 from rotkehlchen.errors.misc import DataIntegrityError, SystemPermissionError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.utils.backups import auto_backups_enabled
 from rotkehlchen.utils.misc import timestamp_to_date, ts_now
 
 if TYPE_CHECKING:
@@ -167,6 +168,12 @@ class DataHandler:
                     raise PermissionError
 
             except PermissionError as e:
+                if not auto_backups_enabled():
+                    raise SystemPermissionError(
+                        f'User {username} exists but DB is missing or inaccessible. '
+                        'Automatic backups are disabled by ROTKI_DISABLE_AUTO_BACKUPS=1; '
+                        'the user directory was left in place. Manual recovery is required.',
+                    ) from e
                 # This is bad. User directory exists but database is missing.
                 # Or either DB or user directory can't be accessed due to permissions
                 # Make a backup of the directory that user should probably remove
@@ -308,12 +315,13 @@ class DataHandler:
         """
         log.info('Decompress and decrypt DB')
         # First make a backup of the DB we are about to replace
-        date = timestamp_to_date(ts=ts_now(), formatstr='%Y_%m_%d_%H_%M_%S', treat_as_local=True)
-        users_dir = self.data_directory / USERSDIR_NAME
-        shutil.copyfile(
-            users_dir / self.username / USERDB_NAME,
-            users_dir / self.username / f'rotkehlchen_db_{date}.backup',
-        )
+        if auto_backups_enabled():
+            date = timestamp_to_date(ts=ts_now(), formatstr='%Y_%m_%d_%H_%M_%S', treat_as_local=True)
+            users_dir = self.data_directory / USERSDIR_NAME
+            shutil.copyfile(
+                users_dir / self.username / USERDB_NAME,
+                users_dir / self.username / f'rotkehlchen_db_{date}.backup',
+            )
 
         decrypted_data = decrypt(self.db.password.encode(), encrypted_data)
         decompressed_data = zlib.decompress(decrypted_data)

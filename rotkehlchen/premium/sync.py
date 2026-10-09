@@ -22,6 +22,7 @@ from rotkehlchen.premium.premium import (
     premium_create_and_verify,
 )
 from rotkehlchen.types import Timestamp
+from rotkehlchen.utils.backups import auto_backups_enabled
 from rotkehlchen.utils.misc import ts_now
 from rotkehlchen.utils.mixins.lockable import LockableQueryMixIn, protect_with_lock
 
@@ -161,6 +162,9 @@ class PremiumSyncManager(LockableQueryMixIn):
         return True, ''
 
     def check_if_should_sync(self, force_upload: bool) -> bool:
+        if not force_upload and not auto_backups_enabled():
+            return False
+
         # if user has no premium do nothing
         if self.premium is None:
             return False
@@ -193,6 +197,9 @@ class PremiumSyncManager(LockableQueryMixIn):
         same time since we want to export to plaintext only once to encrypt and that happens
         in a spawned thread inside this function.
         """
+        if not force_upload and not auto_backups_enabled():
+            return False, None
+
         assert self.premium is not None, 'caller should make sure premium exists'
         log.debug('Starting maybe_upload_data_to_server')
         ok, integrity_error = self.data.db.db_integrity_check()
@@ -379,10 +386,11 @@ class PremiumSyncManager(LockableQueryMixIn):
         and the directory contained data we did not want to lose"""
         user_data_dir = self.data.user_data_dir
         self.data.logout()  # wipes self.data.user_data_dir, so store it
-        shutil.move(
-            user_data_dir,  # type: ignore
-            self.data.data_directory / USERSDIR_NAME / f'auto_backup_{username}_{ts_now()}',
-        )
+        if auto_backups_enabled():
+            shutil.move(
+                user_data_dir,  # type: ignore
+                self.data.data_directory / USERSDIR_NAME / f'auto_backup_{username}_{ts_now()}',
+            )
         if isinstance(original_exception, PremiumPermissionError):
             error_prefix = 'Could not activate premium on this device.'
         elif isinstance(original_exception, RemoteError):

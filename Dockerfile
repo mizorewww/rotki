@@ -99,10 +99,11 @@ COPY --from=frontend-build-stage /app/app/dist /opt/rotki/frontend
 #
 # Also clear any setuid/setgid bit on the payload we are about to ship. The
 # distroless base has none of its own, so this covers only what we add.
-RUN APP=$(find "/opt/rotki" -name "rotki-core-*-linux" | head -n 1) && \
+RUN APP=$(find "/opt/rotki" -type f -name "rotki-core-*-linux") && \
+    test -n "${APP}" && \
     echo "core binary: ${APP}" && \
     mv "${APP}" /opt/rotki/rotki-core/rotki && \
-    find /opt/rotki -perm /6000 -type f -exec chmod a-s {} + || true
+    find /opt/rotki -perm /6000 -type f -exec chmod a-s {} +
 
 # Stage libz into a rootfs tree at its real multiarch path, so the runtime can
 # pull it with a single arch-agnostic COPY. Hardcoding /usr/lib/x86_64-linux-gnu

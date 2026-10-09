@@ -273,22 +273,6 @@
           "description": "Ошибка при получении данных токена: {message}",
           "title": "Получение данных токена для {address} ({evmChain})"
         }
-      },
-      "update": {
-        "error": {
-          "description": "Ошибка обновления базы активов: {message}"
-        },
-        "task": {
-          "title": "Обновление базы данных активов"
-        }
-      },
-      "versions": {
-        "error": {
-          "description": "Ошибка проверки обновлений базы активов: {message}"
-        },
-        "task": {
-          "title": "Проверка обновлений базы активов"
-        }
       }
     },
     "balances": {
@@ -309,14 +293,6 @@
       "create_oracle_cache": {
         "already_running": "Задача уже запущена",
         "task": "Создание записи кэша из {fromAsset} в {toAsset} на {source}"
-      },
-      "detect_tokens": {
-        "error": {
-          "message": "Не удалось обнаружить токены для {address} ({chain}): {error}"
-        },
-        "task": {
-          "title": "Получение обнаруженных токенов"
-        }
       },
       "exchange_removal": {
         "description": "Удаление {exchange} не удалось из-за: {error}",
@@ -480,9 +456,6 @@
       }
     },
     "repulling_exchange_events": {
-      "error": {
-        "description": "Не удалось повторно получить события для {exchange}"
-      },
       "success": {
         "description": "{length} событий получено повторно",
         "no_events_description": "Нет событий для повторного получения"
@@ -493,10 +466,6 @@
       }
     },
     "repulling_transaction": {
-      "error": {
-        "description": "Не удалось повторно получить транзакции для {address} ({chain}).",
-        "no_address_or_chain_transaction": "Не удалось повторно получить транзакции"
-      },
       "success": {
         "description": "{length} транзакций получено повторно",
         "no_tx_description": "Нет транзакций для повторного получения"
@@ -1461,7 +1430,7 @@
     },
     "premium": {
       "button_premium_approve": "Да, включить премиум",
-      "premium_question": "Вы уже являетесь премиум-пользователем rotki и хотите включить премиум-функции?\nЭто необходимо, если вы хотите синхронизировать базу данных rotki с другого устройства при создании аккаунта. Вы можете купить премиум {premiumLink}"
+      "premium_question": "Вы уже являетесь премиум-пользователем rotki и хотите включить премиум-функции?\nВы можете купить премиум {premiumLink}"
     },
     "steps": {
       "step_1": {
@@ -1812,11 +1781,7 @@
     }
   },
   "eth2_page": {
-    "no_premium": "Страница статистики стейкинга ETH не включена в БЕСПЛАТНУЮ версию"
-  },
-  "eth2_validator_limit_row": {
-    "complete": "Показаны балансы только для {limit} из {total} валидаторов. Нажмите {button}, чтобы купить rotki Premium и просмотреть полные балансы валидаторов.",
-    "label": "Валидаторы"
+    "no_premium": "Просмотр стейкинга ETH недоступен"
   },
   "evm_rpc_node_manager": {
     "activate_error": {
@@ -2113,7 +2078,7 @@
       "warning": "Авторизуйте Monerium, чтобы позволить rotki обогащать ваши транзакции банковским контекстом. Токены хранятся локально и используются только для чтения.",
       "website_url_missing": "URL веб-сайта Monerium OAuth не настроен."
     },
-    "need_premium": "Обновитесь до premium, чтобы использовать эту функцию.",
+    "need_premium": "Для этой функции нужен тариф rotki Premium.",
     "no_services_found": "Сервисы не найдены",
     "opensea": {
       "description": "Используется для запроса информации о NFT и балансов из OpenSea.",
@@ -2846,7 +2811,7 @@
     "title": "Заработано на актив"
   },
   "liquity_page": {
-    "no_premium": "Страница статистики стейкинга Liquity не включена в БЕСПЛАТНУЮ версию"
+    "no_premium": "Статистика стейкинга Liquity недоступна на вашем текущем тарифе"
   },
   "liquity_pools": {
     "liquidation_gains": "Невостребованная прибыль от ликвидации",
@@ -3087,7 +3052,7 @@
     "dashboard": {
       "liquidity_pools": {
         "pool_details": {
-          "premium_only": "Просматривайте полный обзор ваших активов с Premium аккаунтом "
+          "premium_only": "Полный обзор ваших активов доступен с тарифом rotki Premium"
         },
         "pool_table": {
           "title": "LP токены"
@@ -3193,8 +3158,7 @@
     "select_collection": "Выберите коллекцию",
     "sort": {
       "collection": "Коллекция"
-    },
-    "upgrade": "Отображается {limit} NFT. Чтобы просмотреть больше, пожалуйста, обновитесь до {link}"
+    }
   },
   "non_fungible_balances": {
     "column": {
@@ -3216,7 +3180,6 @@
       "title": "Заголовок"
     },
     "last_updated": "Последнее обновление: {datetime}",
-    "limit_warning": "Достигнут лимит в {limit} пользовательских заметок в бесплатном плане. Чтобы получить больше заметок, вы можете обновиться до {link}",
     "rules": {
       "content": {
         "non_empty": "Пожалуйста, заполните заметку"
@@ -3234,9 +3197,6 @@
     "tooltip": "Уведомления"
   },
   "notification_messages": {
-    "backend": {
-      "title": "Бэкенд"
-    },
     "beaconchain_rate_limited": {
       "message": "Скорость Beaconcha.in ограничена {until}. Следующий запрос не удался:\n{endpoints}\nПроверьте логи для подробностей.|Скорость Beaconcha.in ограничена {until}. Следующие {count} запросов не удались:\n{endpoints}\n\nПроверьте логи для подробностей.",
       "title": "Ограничение скорости Beaconcha.in"
@@ -3247,7 +3207,6 @@
       "summary": "Успешно импортировано {imported}/{total} записей.",
       "title": "Результат импорта CSV: {sourceName}"
     },
-    "deserialization_error": "Мы не смогли десериализовать {count} активов для ваших аккаунтов, пожалуйста, проверьте логи приложения для получения дополнительной информации.",
     "new_detected_token": {
       "action": "Смотреть больше",
       "message": "Новый токен с идентификатором {identifier} был обнаружен при обработке событий и запросах.|{count} новых токенов были обнаружены при обработке событий и запросах.",
@@ -3340,6 +3299,19 @@
   },
   "pinned": {
     "tooltip": "Закрепленная секция"
+  },
+  "plan_limit": {
+    "hidden": "Лимит тарифа {plan} скрывает {hidden} из ваших {total} {label}. {link}, чтобы увидеть все.",
+    "labels": {
+      "events": "событий",
+      "nfts": "NFT",
+      "notes": "заметок",
+      "reports": "отчётов",
+      "validators": "валидаторов"
+    },
+    "reached": "Вы достигли лимита тарифа {plan}: {limit} {label}. {link}, чтобы добавить больше.",
+    "unprocessed": "Этот отчёт охватывает только период с {from} по {to}. Из-за лимита тарифа {plan} {hidden} из {total} {label} не обработаны. {link}, чтобы включить их.",
+    "upgrade": "Обновите тариф"
   },
   "poap_delivery_airdrops": {
     "title": "Доступные для клейма POAP Delivery NFT"
@@ -3532,8 +3504,8 @@
     },
     "chart_limit": {
       "description": "Ощутите весь потенциал rotki с подпиской Premium.",
-      "statistic": "Просмотр статистики не включен в БЕСПЛАТНУЮ версию",
-      "title": "График не включен в БЕСПЛАТНУЮ версию"
+      "statistic": "Просмотр статистики недоступен",
+      "title": "Графики недоступны"
     },
     "delete_confirmation": {
       "message": "Вы уверены, что хотите удалить ключи rotki premium для вашего аккаунта? Если вы захотите снова включить премиум, вам придется ввести ключи заново.",
@@ -4025,7 +3997,7 @@
   "task_manager": {
     "error": "Произошла ошибка при обработке задачи [{taskId}] '{title}': {error}"
   },
-  "theme_manager_lock": "Менеджер тем не включен в БЕСПЛАТНУЮ версию",
+  "theme_manager_lock": "Менеджер тем недоступен на вашем текущем тарифе",
   "theme_switch": {
     "auto": "Авто (Определить тему устройства)",
     "dark": "Темная",
@@ -4494,14 +4466,6 @@
     "messages": "Доступна новая версия rotki. Смотрите {releaseNotes}.",
     "release_notes": "примечания к выпуску",
     "restart": "rotki перезапустится через мгновение, чтобы применить обновление."
-  },
-  "upgrade_row": {
-    "events": "@:upgrade_row.first_line Чтобы просмотреть больше, пожалуйста, обновитесь до {link}",
-    "events_premium": "@:upgrade_row.first_line Чтобы просмотреть больше, пожалуйста, {link}",
-    "first_line": "Обработано {limit} из {total} {label} с {from} по {to}.",
-    "upgrade": "Отображается {limit} из {total} {label}. Чтобы просмотреть больше, пожалуйста, обновитесь до {link}",
-    "upgrade_premium": "Отображается {limit} из {total} {label}. Чтобы просмотреть больше, пожалуйста, {link}",
-    "upgrade_your_plan": "обновите ваш план"
   },
   "user_dropdown": {
     "change_privacy_mode": {

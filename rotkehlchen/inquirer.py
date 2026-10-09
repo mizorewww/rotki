@@ -15,6 +15,7 @@ from typing import (
 from eth_abi import decode as decode_abi
 from eth_utils import function_signature_to_4byte_selector
 
+from rotkehlchen.api.websockets.typedefs import UserMessageEntry
 from rotkehlchen.assets.asset import Asset, AssetWithOracles, EvmToken, FiatAsset, UnderlyingToken
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.unrealized_pnl import GATE_PNL_ASSETS
@@ -158,6 +159,7 @@ from rotkehlchen.types import (
     Timestamp,
     TokenKind,
 )
+from rotkehlchen.user_messages import LocalDbProblem
 from rotkehlchen.utils.data_structures import LRUCacheWithRemove
 from rotkehlchen.utils.misc import timestamp_to_daystart_timestamp, ts_now
 from rotkehlchen.utils.mixins.penalizable_oracle import PenalizablePriceOracleMixin
@@ -844,6 +846,7 @@ class Inquirer:
             Inquirer._msg_aggregator.add_error(
                 f'Token {asset} has itself as underlying token. Please edit the '
                 'asset to fix it. Price queries will not work until this is done.',
+                classification=LocalDbProblem(entry=UserMessageEntry.ASSET),
             )
             return None
 

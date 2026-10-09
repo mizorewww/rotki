@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import functools
 import logging
 import os
 import platform
@@ -11,14 +12,13 @@ import subprocess  # noqa: S404
 import sys
 import urllib.request
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any
 
 from packaging import version
 from setuptools_scm import get_version
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Callable
 
 rotki_version = get_version()
 
@@ -44,7 +44,6 @@ logging.basicConfig(
 logger = logging.getLogger('package')
 
 MAC_CERTIFICATE = 'CERTIFICATE_OSX_APPLICATION'
-WIN_CERTIFICATE = 'CERTIFICATE_WIN_APPLICATION'
 CERTIFICATE_KEY = 'CSC_KEY_PASSWORD'
 APPLE_ID = 'APPLEID'
 APPLE_ID_PASS = 'APPLEIDPASS'
@@ -164,27 +163,73 @@ def env_var_to_bool(value: str | None) -> bool:
     return value.lower() in {'1', 'true', 'yes', 'on'}
 
 
+_open_log_groups: list[str] = []
+
+
+def write_workflow_command(command: str) -> None:
+    """
+    Writes a GitHub Actions workflow command on its own line.
+
+    Written directly rather than through ``echo`` in a shell, which on Windows keeps the quotes
+    around the group name. Logging goes to stderr, so both streams are flushed to keep the
+    command in order with the step's output.
+    """
+    sys.stderr.flush()
+    sys.stdout.write(f'{command}\n')
+    sys.stdout.flush()
+
+
 def log_group(name: str) -> Callable:
-    def start_group(group_name: str) -> None:
+    """
+    Wraps a build step in a collapsible log group on CI, or between banners locally.
+
+    GitHub Actions cannot nest groups, so a step called from inside another step closes the
+    outer group, runs in its own ``outer / inner`` group, and reopens the outer one when it
+    ends. The group is closed even when the step raises, and the step's return value is passed
+    through.
+    """
+    def start_group(title: str) -> None:
         if os.environ.get('CI'):
-            subprocess.call(f'echo ::group::"{group_name}"', shell=True)
+            write_workflow_command(f'::group::{title}')
         else:
-            logger.info(f'\n\n-----{group_name}-----\n\n')
+            logger.info('\n\n-----%s-----\n\n', title)
 
     def end_group() -> None:
         if os.environ.get('CI'):
-            subprocess.call('echo ::endgroup::', shell=True)
+            write_workflow_command('::endgroup::')
         else:
             logger.info('\n\n-----------------\n\n')
 
     def decorate(fn: Callable) -> Callable:
-        def wrapper(*args: Any, **kwargs: Any | None) -> None:
-            start_group(name)
-            fn(*args, **kwargs)
-            end_group()
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if _open_log_groups:
+                end_group()
+            _open_log_groups.append(name)
+            start_group(' / '.join(_open_log_groups))
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                end_group()
+                _open_log_groups.pop()
+                if _open_log_groups:
+                    start_group(' / '.join(_open_log_groups))
 
         return wrapper
     return decorate
+
+
+def run_security(step: str, *arguments: str) -> None:
+    """
+    Runs one macOS ``security`` keychain step and stops the build when it fails.
+
+    The arguments are passed without a shell, so the certificate password reaches
+    ``security`` as is. Only the step name is logged, never the command, since the
+    certificate import carries that password.
+    """
+    if subprocess.call(['security', *arguments]) != 0:  # noqa: S603
+        logger.error('keychain setup failed at: %s', step)
+        sys.exit(1)
 
 
 class Environment:
@@ -198,13 +243,11 @@ class Environment:
             os.environ.setdefault('ROTKI_VERSION', self.rotki_version)
 
         self.__certificate_mac = os.environ.get(MAC_CERTIFICATE)
-        self.__certificate_win = os.environ.get(WIN_CERTIFICATE)
         self.__csc_password = os.environ.get(CERTIFICATE_KEY)
         self.__appleid = os.environ.get(APPLE_ID)
         self.__appleidpass = os.environ.get(APPLE_ID_PASS)
 
         os.environ.pop(MAC_CERTIFICATE, None)
-        os.environ.pop(WIN_CERTIFICATE, None)
         os.environ.pop(CERTIFICATE_KEY, None)
         os.environ.pop(APPLE_ID, None)
         os.environ.pop(APPLE_ID_PASS, None)
@@ -228,30 +271,17 @@ class Environment:
             'appleidpass': self.__appleidpass,
         }
 
-    def win_sign_env(self) -> dict[str, str]:
-        env = os.environ.copy()
-        if self.__csc_password is not None:
-            env.setdefault(CERTIFICATE_KEY, self.__csc_password)
-        return env
-
-    def win_sign_vars(self) -> dict[str, str | None]:
-        return {
-            'certificate': self.__certificate_win,
-            'key': self.__csc_password,
-        }
-
     @staticmethod
     def sanity_check() -> None:
         """
         Sanity check that exits if any os the secret environment variables is set when called.
         """
         mac_cert = os.environ.get(MAC_CERTIFICATE)
-        win_cert = os.environ.get(WIN_CERTIFICATE)
         key_pass = os.environ.get(CERTIFICATE_KEY)
         appleid = os.environ.get(APPLE_ID)
         appleidpass = os.environ.get(APPLE_ID_PASS)
 
-        sign_vars = [mac_cert, win_cert, key_pass, appleid, appleidpass]
+        sign_vars = [mac_cert, key_pass, appleid, appleidpass]
 
         if any(sign_vars):
             logger.error('at least one of the secrets was set in the environment')
@@ -456,10 +486,8 @@ class Storage:
 
 
 class WindowsPackaging:
-    def __init__(self, storage: Storage, env: Environment) -> None:
+    def __init__(self, storage: Storage) -> None:
         self.__storage = storage
-        self.__env = env
-        self.__p12: Path | None = None
 
     @log_group('miniupnpc windows')
     def setup_miniupnpc(self) -> None:
@@ -497,47 +525,6 @@ class WindowsPackaging:
             src=dll_file,
             dst=python_dir,
         )
-
-    @log_group('certificates')
-    def import_signing_certificates(self) -> bool:
-        """
-        Imports the signing certificates from the environment variables
-        and prepares for signing.
-
-        The function will bail (exit 1) when the certificate is set but
-        no key has been passed in the configuration.
-
-        :return: True when the certificate and key are properly setup,
-        False when the certificate is not configured.
-        """
-        sign_vars = self.__env.win_sign_vars()
-        certificate = sign_vars.get('certificate')
-        csc_password = sign_vars.get('key')
-
-        if os.environ.get('WIN_CSC_LINK') is not None and csc_password is not None:
-            logger.info('WIN_CSC_LINK already set skipping')
-            return True
-
-        if certificate is None or certificate == '':
-            logger.info(f'{WIN_CERTIFICATE} is not set skipping signing')
-            return False
-
-        if csc_password is None:
-            logger.error(f'Missing {CERTIFICATE_KEY}')
-            sys.exit(1)
-
-        logger.info('preparing to sign windows installer')
-        with NamedTemporaryFile(delete=False, suffix='.p12') as p12:
-            self.__p12 = Path(p12.name)
-            os.environ.setdefault('WIN_CSC_LINK', str(self.__p12))
-            certificate_data = base64.b64decode(certificate)
-            p12.write(certificate_data)
-
-        return True
-
-    def cleanup_certificate(self) -> None:
-        if self.__p12 is not None:
-            self.__p12.unlink(missing_ok=True)
 
 
 class MacPackaging:
@@ -583,26 +570,26 @@ class MacPackaging:
             encoding='utf8',
         ).strip()
 
-        # Create a keychain
-        subprocess.call(f'security create-keychain -p actions {keychain}', shell=True)
+        run_security('create keychain', 'create-keychain', '-p', 'actions', keychain)
         # A new keychain auto-locks 300 s after it is unlocked, and unlocking it again does not
-        # reset that. PyInstaller re-signs rotki-core long after colibri and starling were
-        # signed, so on a slow runner its codesign waited forever on a password prompt.
+        # reset that. This runs before the cargo builds and PyInstaller signs rotki-core long
+        # after, so on a slow runner its codesign waited forever on a password prompt.
         # Allow 6 hours.
-        subprocess.call(f'security set-keychain-settings -lut 21600 {keychain}', shell=True)
+        run_security('set keychain timeout', 'set-keychain-settings', '-lut', '21600', keychain)
         # Logs "timeout=21600s", so a build log shows the setting took
         subprocess.call(f'security show-keychain-info {keychain}', shell=True)
         # Make the keychain the default so identities are found
-        subprocess.call(f'security default-keychain -s {keychain}', shell=True)
-        # Unlock the keychains
-        subprocess.call(f'security unlock-keychain -p actions {keychain}', shell=True)
-        subprocess.call(
-            f'security import {p12!s} -k {keychain} -P {csc_password} -T /usr/bin/codesign;',
-            shell=True,
+        run_security('make keychain default', 'default-keychain', '-s', keychain)
+        run_security('unlock keychain', 'unlock-keychain', '-p', 'actions', keychain)
+        run_security(
+            'import certificate',
+            'import', str(p12), '-k', keychain, '-P', csc_password, '-T', '/usr/bin/codesign',
         )
-        subprocess.call(
-            f'security set-key-partition-list -S apple-tool:,apple:,codesign:,productbuild: -s -k actions {keychain}',  # noqa: E501
-            shell=True,
+        run_security(
+            'set key partition list',
+            'set-key-partition-list',
+            '-S', 'apple-tool:,apple:,codesign:,productbuild:',
+            '-s', '-k', 'actions', keychain,
         )
 
         return True
@@ -615,37 +602,6 @@ class MacPackaging:
         if self.__p12.exists():
             self.__p12.unlink(missing_ok=True)
         os.environ.pop('CSC_LINK', None)
-
-    @log_group('signing')
-    def sign(self, paths: Generator[Path]) -> None:
-        """
-        Signs all the contents of the directory created by PyInstaller
-        with the provided signing key/identity.
-        """
-        if not self.import_signing_certificates():
-            return
-
-        identify = os.environ.get('IDENTITY')
-        for path in paths:
-            if not path.is_file():
-                continue
-
-            logger.debug(f'Preparing to sign {path}')
-            sign_ret_code = subprocess.call(
-                f'codesign --force --options runtime --entitlements ./packaging/entitlements.plist --sign {identify} {path} --timestamp',  # noqa: E501
-                shell=True,
-            )
-
-            if sign_ret_code != 0:
-                logger.error(f'could not sign file {path}')
-                sys.exit(1)
-
-            verify_ret_code = subprocess.call(f'codesign --verify {path}', shell=True)
-
-            if verify_ret_code != 0:
-                logger.error(f'signature verification failed at {path}')
-                sys.exit(1)
-        self.cleanup_keychain()
 
 
 class BackendBuilder:
@@ -819,6 +775,9 @@ class BackendBuilder:
         if github_ref is not None:
             os.environ.setdefault('GITHUB_REF', github_ref)
 
+        if mac is not None:
+            mac.import_signing_certificates()
+
         self.__create_rust_binary()
         self.__create_starling_binary()
         self.__install_pyinstaller()
@@ -827,8 +786,6 @@ class BackendBuilder:
 
         if mac is not None and macos_target is not None:
             self.__check_macos_floor(macos_target)
-            backend_directory = self.__storage.backend_directory / BACKEND_PREFIX
-            mac.sign(paths=backend_directory.glob('**/*'))
 
         if win is not None:
             self.__check_windows_resources()
@@ -912,9 +869,6 @@ class BackendBuilder:
         binary_directory.mkdir(exist_ok=True, parents=True)
         shutil.copy(backend_binary, binary_directory / binary_name)
 
-        if self.__mac is not None:
-            self.__mac.sign(binary_directory.glob('**/*'))
-
     @log_group('starling cargo build')
     def __create_starling_binary(self) -> None:
         starling_directory = self.__storage.starling_directory
@@ -953,9 +907,6 @@ class BackendBuilder:
 
         binary_directory.mkdir(exist_ok=True, parents=True)
         shutil.copy(starling_binary, binary_directory / binary_name)
-
-        if self.__mac is not None:
-            self.__mac.sign(binary_directory.glob('**/*'))
 
     @log_group('package')
     def __package(self) -> None:
@@ -1110,10 +1061,6 @@ class FrontendBuilder:
             self.__mac.import_signing_certificates()
             sign_env = self.__env.macos_sign_env()
 
-        if self.__win is not None:
-            self.__win.import_signing_certificates()
-            sign_env = self.__env.win_sign_env()
-
         logger.info('Calling build')
         ret_code = subprocess.call('pnpm run build', shell=True, env=frontend_env)
         if ret_code != 0:
@@ -1146,8 +1093,6 @@ class FrontendBuilder:
 
         if self.__mac is not None:
             self.__mac.cleanup_keychain()
-        if self.__win is not None:
-            self.__win.cleanup_certificate()
 
     @staticmethod
     @log_group('pnpm install')
@@ -1208,7 +1153,7 @@ def main() -> None:
     if environment.is_mac():
         mac = MacPackaging(storage, environment)
     if environment.is_windows():
-        win = WindowsPackaging(storage, environment)
+        win = WindowsPackaging(storage)
 
     if args.build in {'backend', 'full'}:
         builder = BackendBuilder(

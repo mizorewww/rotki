@@ -23,7 +23,7 @@ All messages sent by the backend via websockets are stringified json and they ha
 ::
 
     {
-        "type": "legacy",
+        "type": "user_message",
         "data": "{"some": 1, "data": 2}"
     }
 
@@ -34,22 +34,33 @@ Messages
 ************
 
 
-Legacy messages
+User messages
 ====================
 
-The messages sent by rotki via the ``MessagesAggregator`` can be found in this type. The format is
+The errors and warnings sent by rotki via the ``MessagesAggregator`` can be found in this type. The format is
 
 
 ::
 
     {
-        "type": "legacy",
-        "data": "{"verbosity": "warning", "value": "A warning"}"
+        "type": "user_message",
+        "data": {
+            "verbosity": "error",
+            "value": "Failed to deserialize a kucoin balance. Ignoring it.",
+            "key": "bad_data",
+            "subject": "kucoin",
+            "fields": {"record": "balance", "error": "Missing key: amount"},
+            "group": ["error", "bad_data", "kucoin", "balance"]
+        }
     }
 
 
 - ``verbosity``: The verbosity of the message. Can be one of ``"warning"`` or ``"error"``.
 - ``value``: A string with the contents of the message.
+- ``key``: Why the message happened. One of ``"bad_data"``, ``"network"``, ``"auth"``, ``"unknown_asset"``, ``"local_db"``, ``"price"``, ``"unsupported"`` or ``"internal"``. Always present.
+- ``subject``: The location the message is about, e.g. ``"kucoin"``. ``null`` for a message about no single location, such as a broken row in the local database.
+- ``fields``: The data specific to ``key``, e.g. ``record`` and ``error`` for ``"bad_data"`` or ``entry`` for ``"local_db"``. Always present.
+- ``group``: The message's identity: ``verbosity``, ``key`` and ``subject``, followed by the fields that ``key`` declares identify one problem (``record`` for ``"bad_data"`` and ``"network"``, ``service`` and ``account`` for ``"auth"``, ``identifier`` for ``"unknown_asset"``, ``entry`` for ``"local_db"``, ``feature`` for ``"unsupported"``, ``operation`` for ``"internal"``, nothing more for ``"price"``). Messages with the same ``group`` are repeats of one problem, whatever their ``value``. Always present.
 
 
 Balance snapshot errors

@@ -1,5 +1,6 @@
 import type { TimeFramePeriod } from '@rotki/common';
 import type { Module } from '@/modules/core/common/modules';
+import type { DataIssue } from '@/modules/history/data-issues/schemas';
 import type { Report } from '@/modules/reports/report-types';
 import { z } from 'zod';
 
@@ -13,9 +14,21 @@ export const PeriodicClientQueryResultSchema = z.object({
 
 export type PeriodicClientQueryResult = z.infer<typeof PeriodicClientQueryResultSchema>;
 
+/**
+ * The messages the backend held while no client received them, drained by `GET /messages`.
+ *
+ * @remarks
+ * Each entry is a `{ type, data }` message in the websocket's shape plus `count`, how many times
+ * it was sent while held, and `lastSent`, when it was last sent in seconds. The message itself is
+ * validated where it is dispatched, so one this build does not know drops alone instead of
+ * failing the whole batch. `dropped` is how many the backend discarded to stay within its limits.
+ */
 export const MessagesSchema = z.object({
-  errors: z.array(z.string()),
-  warnings: z.array(z.string()),
+  dropped: z.number().int().nonnegative(),
+  messages: z.array(z.looseObject({
+    count: z.number().int().positive(),
+    lastSent: z.number().int().nonnegative(),
+  })),
 });
 
 export type Messages = z.infer<typeof MessagesSchema>;
@@ -43,7 +56,9 @@ export type PinnedName = typeof PinnedNames[keyof typeof PinnedNames];
  * entry in sync with the corresponding `*Pinned.vue` host's `defineProps`.
  */
 export interface PinnedPanelProps {
-  [PinnedNames.BALANCE_DIVERGENCE]: Record<never, never>;
+  [PinnedNames.BALANCE_DIVERGENCE]: {
+    issue?: DataIssue;
+  };
   [PinnedNames.DATA_ISSUES]: Record<never, never>;
   [PinnedNames.INTERNAL_TX_CONFLICTS]: {
     highlightedGroupIdentifier?: string;

@@ -31,6 +31,11 @@ from rotkehlchen.history.events.utils import create_group_identifier_from_unique
 from rotkehlchen.tests.utils.constants import A_SOL, A_XTZ
 from rotkehlchen.tests.utils.exchanges import TRANSACTIONS_RESPONSE, mock_normal_coinbase_query
 from rotkehlchen.tests.utils.factories import make_random_bytes
+from rotkehlchen.tests.utils.messages import (
+    consume_errors,
+    consume_errors_and_unknown_assets,
+    consume_warnings,
+)
 from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.types import ApiKey, ApiSecret, Location, Timestamp, TimestampMS
 
@@ -235,8 +240,8 @@ def test_coinbase_query_balances(function_scope_coinbase):
     assert balances[A_ETH].amount == FVal('39.59')
     assert balances[A_ETH].value == FVal('59.385000000')
 
-    warnings = coinbase.msg_aggregator.consume_warnings()
-    errors = coinbase.msg_aggregator.consume_errors()
+    warnings = consume_warnings(coinbase.msg_aggregator)
+    errors = consume_errors(coinbase.msg_aggregator)
     assert len(warnings) == 0
     assert len(errors) == 0
 
@@ -270,6 +275,7 @@ def test_coinbase_query_balances_unexpected_data(function_scope_coinbase):
             expected_errors_num,
             expected_balances_for_no_warnings=1,
             contains_expected_msg=None,
+            unknown_assets=(),
     ):
         def mock_coinbase_accounts(url, timeout, **_kwargs):  # pylint: disable=unused-argument
             return MockResponse(200, response_str)
@@ -277,8 +283,9 @@ def test_coinbase_query_balances_unexpected_data(function_scope_coinbase):
         with patch.object(coinbase.session, 'get', side_effect=mock_coinbase_accounts):
             balances, msg = coinbase.query_balances()
 
-        warnings = coinbase.msg_aggregator.consume_warnings()
-        errors = coinbase.msg_aggregator.consume_errors()
+        warnings = consume_warnings(coinbase.msg_aggregator)
+        errors, unknown = consume_errors_and_unknown_assets(coinbase.msg_aggregator)
+        assert unknown == list(unknown_assets)
         if contains_expected_msg:
             assert balances is None
             assert contains_expected_msg in msg
@@ -321,7 +328,7 @@ def test_coinbase_query_balances_unexpected_data(function_scope_coinbase):
     query_coinbase_and_test_local_mock(input_data, expected_warnings_num=0, expected_errors_num=0, expected_balances_for_no_warnings=0)  # noqa: E501
     # account entry with unknown asset
     input_data = data.replace('"BTC"', '"DDSADSAD"')
-    query_coinbase_and_test_local_mock(input_data, expected_warnings_num=0, expected_errors_num=0, expected_balances_for_no_warnings=0)  # noqa: E501
+    query_coinbase_and_test_local_mock(input_data, expected_warnings_num=0, expected_errors_num=0, expected_balances_for_no_warnings=0, unknown_assets=['DDSADSAD'])  # noqa: E501
     # account entry with invalid asset
     input_data = data.replace('"BTC"', 'null')
     query_coinbase_and_test_local_mock(input_data, expected_warnings_num=0, expected_errors_num=0, expected_balances_for_no_warnings=0)  # noqa: E501
@@ -374,8 +381,8 @@ def query_coinbase_and_test(
             ),
         )
 
-    errors = coinbase.msg_aggregator.consume_errors()
-    warnings = coinbase.msg_aggregator.consume_warnings()
+    errors = consume_errors(coinbase.msg_aggregator)
+    warnings = consume_warnings(coinbase.msg_aggregator)
     assert len(events) == expected_events_num
     assert len(errors) == expected_errors_num
     assert len(warnings) == expected_warnings_num
@@ -625,8 +632,8 @@ def test_coinbase_query_history_events(
             filter_query=HistoryEventFilterQuery.make(location=Location.COINBASE),
         )
 
-    warnings = coinbase.msg_aggregator.consume_warnings()
-    errors = coinbase.msg_aggregator.consume_errors()
+    warnings = consume_warnings(coinbase.msg_aggregator)
+    errors = consume_errors(coinbase.msg_aggregator)
     assert len(warnings) == 0
     assert len(errors) == 0
     assert len(events) == 15
@@ -1526,8 +1533,8 @@ def test_coinbase_query_trade_history_advanced_fill(function_scope_coinbase):
             ),
         )
 
-    warnings = coinbase.msg_aggregator.consume_warnings()
-    errors = coinbase.msg_aggregator.consume_errors()
+    warnings = consume_warnings(coinbase.msg_aggregator)
+    errors = consume_errors(coinbase.msg_aggregator)
     assert len(warnings) == 0
     assert len(errors) == 0
     # Notice that there are more trades included in the mock data
@@ -2013,8 +2020,8 @@ def test_ignore_same_asset_same_amount_swap(function_scope_coinbase):
     ):
         function_scope_coinbase.query_history_events()
 
-    assert len(function_scope_coinbase.msg_aggregator.consume_warnings()) == 0
-    assert len(function_scope_coinbase.msg_aggregator.consume_errors()) == 0
+    assert len(consume_warnings(function_scope_coinbase.msg_aggregator)) == 0
+    assert len(consume_errors(function_scope_coinbase.msg_aggregator)) == 0
     with function_scope_coinbase.db.conn.read_ctx() as cursor:
         assert DBHistoryEvents(function_scope_coinbase.db).get_history_events_internal(
             cursor=cursor,

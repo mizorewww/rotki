@@ -8,6 +8,7 @@ from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.db.drivers.sqlite import DBConnection, DBConnectionType
 from rotkehlchen.errors.misc import DBUpgradeError
 from rotkehlchen.types import SPAM_PROTOCOL
+from rotkehlchen.utils.backups import auto_backups_enabled
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -107,6 +108,13 @@ def initialize_globaldb(
 
     # Otherwise replace the db with a backup and relogin
     connection.close()
+    if not auto_backups_enabled():
+        raise DBUpgradeError(
+            f'Your global database is in a half-upgraded state at '
+            f'v{ongoing_upgrade_from_version}. Automatic backup recovery is disabled by '
+            'ROTKI_DISABLE_AUTO_BACKUPS=1; no backup was restored. '
+            'Manual recovery is required.',
+        )
     backup_postfix = f'global_db_v{ongoing_upgrade_from_version}.backup'
     found_backups = list(filter(
         lambda x: x[-len(backup_postfix):] == backup_postfix,

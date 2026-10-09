@@ -1756,7 +1756,7 @@ Trigger an async task
             "status_code": 200
           }
 
-        :resjson bool result: True on success
+        :resjson bool result: True on success. For ``historical_balance_processing`` it is true when a run started or one is already running, so a ``historical_balance_processing_completed`` websocket message will follow, and false when nothing started because a profit and loss report is gathering history events.
         :statuscode 200: Task started successfully
         :statuscode 401: User is not logged in
         :statuscode 403: Task is not available for the current premium tier
@@ -3132,8 +3132,8 @@ Decode transactions that haven't been decoded yet
           "chain": "eth"
       }
 
-   :reqjson bool ignore_cache: Defaults to false. If set to true then all events will be redecoded, not only those that have not yet been decoded.
-   :reqjson string chain: The name of the chain for which to decode transactions. The possible values are limited to the chains for which we support transaction decoding (solana, zksync lite, and all supported EVM chains except for avalanche).
+   :reqjson bool ignore_cache: Defaults to false. If set to true then all events will be redecoded, not only those that have not yet been decoded. Transactions with customized or matched events are left as they are.
+   :reqjson string chain: The name of the chain for which to decode transactions. The possible values are limited to the chains for which we support transaction decoding (solana, zksync lite, bitcoin, bitcoin cash, and all supported EVM chains except for avalanche). Bitcoin and bitcoin cash transactions are decoded from what is saved locally, without querying any explorer.
 
    **Example Response**:
 
@@ -7652,7 +7652,9 @@ Querying messages to show to the user
 
 .. http:get:: /api/(version)/messages
 
-   Doing a GET on the messages endpoint will pop all errors and warnings from the message queue and return them. The message queue is a queue where all errors and warnings that are supposed to be see by the user are saved and are supposed to be popped and read regularly.
+   Doing a GET on the messages endpoint pops and returns every message the backend held because no websocket client received it: the send failed, no client was connected, or the client disconnected before receiving it. A client should read it whenever it connects and while it is disconnected.
+
+   How a message is held depends on its type. Progress and status messages are dropped, since they only mean something to a connected client. A message that reports something that happened once, such as ``new_token_detected``, is held in order. A message that reports a state, such as ``premium_status_update`` or ``refresh_balances`` for one chain, is held only in its latest form. A failure that tends to repeat, such as ``oracle_penalized`` or a ``user_message``, is held once per distinct message, with a count of how many times it was sent. User messages are held apart from the other repeating failures, since their text varies, except for rejected credentials (``key`` ``auth``), which are held like a state. Each of these four stores is bounded (500 events, 200 states, 200 repeating failures and 200 user messages) and drops its oldest entry when full.
 
 
    **Example Request**:
@@ -7671,14 +7673,37 @@ Querying messages to show to the user
 
       {
           "result": {
-              "errors": ["Something bad happened", "Another bad thing happened"],
-              "warnings": ["An asset could not be queried", "Can not reach kraken"]
+              "messages": [
+                  {
+                      "type": "user_message",
+                      "data": {
+                          "verbosity": "error",
+                          "value": "Failed to deserialize a kucoin balance. Ignoring it.",
+                          "key": "bad_data",
+                          "subject": "kucoin",
+                          "fields": {"record": "balance", "error": "Missing key: amount"},
+                          "group": ["error", "bad_data", "kucoin", "balance"]
+                      },
+                      "count": 3,
+                      "last_sent": 1790773550
+                  },
+                  {"type": "balance_snapshot_error", "data": {"location": "kraken", "error": "Could not reach kraken"}, "count": 1, "last_sent": 1790773560},
+                  {
+                      "type": "user_message",
+                      "data": {"verbosity": "warning", "value": "Tag foo with invalid color code found in the DB. Skipping tag", "key": "local_db", "subject": null, "fields": {"entry": "tag"}, "group": ["warning", "local_db", null, "tag"]},
+                      "count": 1,
+                      "last_sent": 1790773570
+                  }
+              ],
+              "dropped": 0
           },
           "message": ""
       }
 
-   :resjson list[string] errors: A list of strings denoting errors that need to be shown to the user.
-   :resjson list[string] warnings: A list of strings denoting warnings that need to be shown to the user.
+   :resjson list[object] messages: The held messages, ordered by when each was last sent. Each entry is a message in the same ``{"type": ..., "data": ...}`` shape the websocket sends, plus ``count``, how many times it was sent while held, and ``last_sent``, the timestamp in seconds of the last time it was sent.
+   :resjson int dropped: How many messages were dropped to keep the stores within their bounds since the last read. Each dropped message is written to the backend log.
+
+   A ``user_message`` message carries ``verbosity`` (``"error"`` or ``"warning"``) and ``value``, the rendered text. It also carries ``key`` (why it happened, e.g. ``"bad_data"``, ``"network"``) and ``fields`` (the data specific to that key), which every message has, and ``subject`` (the location it happened to, e.g. ``"kucoin"``), which is ``null`` for a message about no single location. ``group`` is its identity: repeats with the same ``group`` are held as one entry with a ``count`` and the newest ``value``. See the ``user_message`` websocket message for what each key groups by.
 
    :statuscode 200: Messages popped and read successfully.
    :statuscode 500: Internal rotki error.
@@ -16254,13 +16279,15 @@ Historical Balance Queries
           "evm_chain": "arbitrum_one",
           "address": "0x9531C059098e3d194fF87FebB587aB07B30B1306",
           "asset": "ETH",
-          "tolerance": "0.0033305072912590555"
+          "tolerance": "0.0033305072912590555",
+          "to_timestamp": 1755037590
         }
 
     :reqjson string evm_chain: The EVM chain name (e.g., "ethereum", "optimism", "arbitrum_one")
     :reqjson string address: The EVM address whose wallet balance should be checked
     :reqjson string asset: The asset identifier (native token or ERC20 token on the specified chain)
     :reqjson string[optional] tolerance: Maximum absolute difference treated as a match. Defaults to ``"0"``.
+    :reqjson int[optional] to_timestamp: Inclusive upper bound, in seconds, for the checkpoints considered by the search. Checkpoints after that second are ignored, so a divergence that a later event corrects can still be found. If omitted or ``null``, all checkpoints are considered.
 
     **Example Response:**
 
@@ -16281,6 +16308,7 @@ Historical Balance Queries
             "last_matching": {
               "event_identifier": 12345,
               "group_identifier": "421610x7e3b7cc64daf94ed14d47743908cf1ef11be0da3adaf9887d59847330230882c",
+              "tx_hash": "0x7e3b7cc64daf94ed14d47743908cf1ef11be0da3adaf9887d59847330230882c",
               "timestamp": 1755037576,
               "block_number": 371234567,
               "tracked_balance": "0.005964804719627",
@@ -16290,6 +16318,7 @@ Historical Balance Queries
             "first_diverged": {
               "event_identifier": 12346,
               "group_identifier": "421610x4e2dab3d32fbec3123de4f83fd2dc3becb7cf3a7bbfcb75d8dc35d1a80a355b3",
+              "tx_hash": "0x4e2dab3d32fbec3123de4f83fd2dc3becb7cf3a7bbfcb75d8dc35d1a80a355b3",
               "timestamp": 1755037590,
               "block_number": 371234580,
               "tracked_balance": "1.60181176561987326",
@@ -16302,6 +16331,7 @@ Historical Balance Queries
               "event": {
                 "event_identifier": 12000,
                 "group_identifier": "421610x...",
+                "tx_hash": "0x...",
                 "timestamp": 1735689600,
                 "block_number": 290000000,
                 "tracked_balance": "0.004369412502091037",
@@ -16313,7 +16343,7 @@ Historical Balance Queries
           "status_code": 200
         }
 
-    :resjson string status: ``"diverged"``, ``"diverged_from_start"`` or ``"no_divergence"``
+    :resjson string status: ``"diverged"``, ``"diverged_from_start"``, ``"no_divergence"`` or ``"no_checkpoints"``. The last status means there are no processed wallet balance checkpoints in the searched range; no archive queries are made and both boundary events are ``null``.
     :resjson string location: The chain/location checked
     :resjson string address: The checked EVM address
     :resjson string asset: The checked asset identifier
@@ -16321,12 +16351,13 @@ Historical Balance Queries
     :resjson string tolerance: The tolerance used for match comparisons
     :resjson object/null last_matching: Last checkpoint where tracked and on-chain balances matched
     :resjson object/null first_diverged: First checkpoint where tracked and on-chain balances diverged
+    :resjson string/null tx_hash: In each checkpoint event, the transaction hash of the event, or ``null`` if the event is not tied to a transaction. ``group_identifier`` is the history event group and is prefixed with the chain id.
     :resjson list[object] probes: Ordered list of balance probes performed by the binary search
     :statuscode 200: Divergence search completed successfully
     :statuscode 400: Invalid request (wrong chain for asset, invalid chain, negative tolerance)
     :statuscode 401: User is not logged in
     :statuscode 403: User does not have premium access
-    :statuscode 404: Accounting refactor feature flag is disabled or no tracked historical balance data exists
+    :statuscode 404: Accounting refactor feature flag is disabled
     :statuscode 409: No archive node available for the specified chain or archive balance query failed
 
 

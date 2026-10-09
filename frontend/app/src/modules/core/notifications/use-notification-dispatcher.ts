@@ -1,18 +1,16 @@
-import type { NotificationPayload, SemiPartial } from '@rotki/common';
+import type { Notification } from '@rotki/common';
 import type { NotificationStrategy, NotificationStrategyContext } from './strategies/types';
 import { logger } from '@/modules/core/common/logging/logging';
 import { createNotification } from '@/modules/core/notifications/notification-utils';
 import { useNotificationsStore } from '@/modules/core/notifications/use-notifications-store';
 import { hasLiveSession } from '@/modules/core/session/session-lifecycle';
 import { createBeaconchainRateLimitStrategy } from './strategies/beaconchain-rate-limit';
-import { bulkDuplicateStrategy } from './strategies/bulk-duplicate';
-import { createDeserializationErrorStrategy } from './strategies/deserialization-error';
 import { createGroupUpdateStrategy } from './strategies/group-update';
 import { useNotificationCooldown } from './use-notification-cooldown';
 import { useSilentNotifications } from './use-silent-notifications';
 
 interface UseNotificationDispatcherReturn {
-  notify: (payload: SemiPartial<NotificationPayload, 'title' | 'message'>) => void;
+  notify: (payload: Notification) => void;
 }
 
 export function useNotificationDispatcher(): UseNotificationDispatcherReturn {
@@ -22,8 +20,6 @@ export function useNotificationDispatcher(): UseNotificationDispatcherReturn {
   const { silent } = useSilentNotifications();
 
   const strategies: NotificationStrategy[] = [
-    bulkDuplicateStrategy,
-    createDeserializationErrorStrategy(t),
     createBeaconchainRateLimitStrategy(t),
     createGroupUpdateStrategy(cooldown),
   ];
@@ -37,13 +33,13 @@ export function useNotificationDispatcher(): UseNotificationDispatcherReturn {
    * its logout (a request the gate refused, a handler that resumed late), so nobody needs to act
    * on it, and keeping it would surface it in the next session.
    */
-  function notify(payload: SemiPartial<NotificationPayload, 'title' | 'message'>): void {
+  function notify(payload: Notification): void {
     if (!hasLiveSession()) {
       logger.debug(`dropped notification with no live session: ${payload.title}`);
       return;
     }
 
-    const incoming: SemiPartial<NotificationPayload, 'title' | 'message'> = get(silent)
+    const incoming: Notification = get(silent)
       ? { ...payload, display: false }
       : payload;
 
